@@ -9,6 +9,7 @@ if __name__ == '__main__':
     #                 t_max=100,
     #                 p=0.9)
     env = RiverSwim(10, p=0.9)
+    print(env.transition_p)
     vi = ValueIteration(env, epsilon=0.001, gamma=0.9)
     policy = vi.run()
     print(policy)
