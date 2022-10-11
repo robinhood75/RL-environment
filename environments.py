@@ -1,8 +1,10 @@
 import numpy as np
+from reward_machines import BaseRewardMachine
 
 
 class BaseEnvironment:
-    def __init__(self):
+    def __init__(self, rm: BaseRewardMachine):
+        self.rm = rm
         self.states = None
         self.actions = None
         self.s = None
@@ -37,7 +39,7 @@ class BaseEnvironment:
             action = np.random.choice(self.actions[self.s], p=policy[self.s])
         if new_state is None:
             new_state = self.get_next_state(action)
-        reward = int((new_state == self.target))
+        reward = self.rm.step(new_state)
         if perform_action:
             self.s = new_state
             self.trajectory.append(new_state)
@@ -46,7 +48,7 @@ class BaseEnvironment:
 
 
 class GridWorld(BaseEnvironment):
-    def __init__(self, x_max, y_max, target, walls, t_max, p=0.8):
+    def __init__(self, rm, x_max, y_max, target, walls, t_max, p=0.8):
         """
         :param x_max: width of the grid
         :param y_max: length of the grid
@@ -55,7 +57,7 @@ class GridWorld(BaseEnvironment):
         :param t_max: max number of steps allowed in an episode
         :param p: the action succeeds with probability p, and the agent doesn't move with probability 1-p
         """
-        super().__init__()
+        super().__init__(rm=rm)
         self.x_max = x_max
         self.y_max = y_max
         self.walls = walls
@@ -90,8 +92,8 @@ class GridWorld(BaseEnvironment):
 
 
 class RiverSwim(BaseEnvironment):
-    def __init__(self, n, p=0.8):
-        super().__init__()
+    def __init__(self, rm, n, p=0.8):
+        super().__init__(rm=rm)
         self.p = p
         self.states = range(n)
         self.states_indices = range(n)
