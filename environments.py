@@ -41,7 +41,7 @@ class BaseEnvironment:
     def step(self, action, perform_action=None, new_state=None):
         if new_state is None:
             new_state = self.get_next_state(action)
-        reward = self.rm.step(new_state)
+        reward = self.rm.step(new_state, perform_transition=perform_action)[0]
         if perform_action:
             self.s = new_state
             self.trajectory.append(new_state)
