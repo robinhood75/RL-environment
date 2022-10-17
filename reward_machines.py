@@ -2,6 +2,10 @@ class BaseRewardMachine:
     def __init__(self, u0):
         self.states = None
         self.u = u0
+        self.u0 = u0
+
+    def reset(self):
+        self.u = self.u0
 
     def step(self, s):
         """

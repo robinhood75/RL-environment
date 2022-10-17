@@ -10,8 +10,13 @@ class BaseEnvironment:
         self.s = None
         self.states_indices = None
         self.transition_p = None
-        self.target = None
         self.trajectory = []
+        self.rewards = []
+
+    def reset(self, s0):
+        self.rm.reset()
+        self.s = s0
+        self.trajectory = [s0]
         self.rewards = []
 
     def start(self, s0):
@@ -29,14 +34,11 @@ class BaseEnvironment:
     def get_next_state(self, action):
         new_state_index = np.random.choice(
             range(self.n_states),
-            p=self.transition_p[self.s][action]
+            p=self.transition_p[self.states_indices[self.s]][action]
         )
         return self.states[new_state_index]
 
-    def step(self, policy=None, action=None, perform_action=None, new_state=None):
-        if action is None:
-            assert policy is not None, "Specify either action or policy"
-            action = np.random.choice(self.actions[self.s], p=policy[self.s])
+    def step(self, action, perform_action=None, new_state=None):
         if new_state is None:
             new_state = self.get_next_state(action)
         reward = self.rm.step(new_state)
@@ -44,25 +46,25 @@ class BaseEnvironment:
             self.s = new_state
             self.trajectory.append(new_state)
             self.rewards.append(reward)
-        return reward
+        return reward, new_state
+
+    def is_terminal(self, s):
+        return self.actions[self.states_indices[s]] == []
 
 
 class GridWorld(BaseEnvironment):
-    def __init__(self, rm, x_max, y_max, target, walls, t_max, p=0.8):
+    def __init__(self, rm, x_max, y_max, target, walls, p=0.8):
         """
         :param x_max: width of the grid
         :param y_max: length of the grid
         :param walls: list of positions corresponding to walls
         :param target: s of the target
-        :param t_max: max number of steps allowed in an episode
         :param p: the action succeeds with probability p, and the agent doesn't move with probability 1-p
         """
         super().__init__(rm=rm)
         self.x_max = x_max
         self.y_max = y_max
         self.walls = walls
-        self.target = target
-        self.t_max = t_max
         self.p = p
         self.states = [(x, y) for x in range(x_max) for y in range(y_max) if (x, y) not in walls]
         self.states_indices = {s: i for (i, s) in enumerate(self.states)}
@@ -100,7 +102,6 @@ class RiverSwim(BaseEnvironment):
         base_actions = [-1, 1]
         self.actions = [[a for a in base_actions if 0 <= a + s < n]
                         for s in self.states]
-        self.target = self.states[-1]
         self.transition_p = self.get_transition_p()
 
     def start(self, s0=0):

@@ -1,19 +1,17 @@
-from online_algorithms import *
+from model_based_algorithms import *
+from model_free_algorithms import *
 from reward_machines import *
 
 
 if __name__ == '__main__':
-    # rm = OneStateRM({(2, 2): 1})
-    # env = GridWorld(x_max=3,
-    #                 y_max=3,
-    #                 target=(2, 2),
-    #                 walls=[],
-    #                 t_max=100,
-    #                 p=0.9,
-    #                 rm=rm)
-    rm = RiverSwimPatrol(u0='LR', n_states_mdp=10)
-    env = RiverSwim(rm, 10, p=0.9)
-    vi = ValueIteration(env, epsilon=0.001, gamma=1)
-    policy = vi.run()
-    print(policy)
-    print(env.states)
+    target = (2, 2)
+    rm = OneStateRM({target: 1})
+    env = GridWorld(rm, x_max=3, y_max=3, target=target, p=0.9, walls=[])
+
+    q = QLearning(env, gamma=0.9, eps=0.2, max_steps=1000)
+    q.run(s0=(0, 0), n_episodes=100)
+    print("Q values with QL:", q.Q)
+
+    env.reset(s0=(0, 0))
+    vi = ValueIteration(env, epsilon=0.001, gamma=0.9)
+    vi.run()
