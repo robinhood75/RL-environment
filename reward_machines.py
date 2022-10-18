@@ -52,5 +52,5 @@ class OneStateRM(BaseRewardMachine):
             r = self.rewards_dict[s]
         else:
             r = 0
-        return r
+        return r, None
 

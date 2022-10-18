@@ -97,6 +97,55 @@ class QRM(BaseQLearning):
                 n_steps += 1
 
 
-class OptimisticQLearning(BaseQLearning):
-    pass
+class OptimisticQLearning:
+    """The only existing average-reward model-free RL algorithm with regret guarantees (Wei et al. 2019)"""
+    def __init__(self, env: BaseEnvironment, t, c, max_steps, h=None):
+        self.env = env
+        self.h = self.get_h(h, t)
+        self.gamma = 1 - 1/self.h
+        self.t = t
+        self.max_steps = max_steps
+        self.c = c
+        self.Q = self.get_q0()
+        self.Q_est = self.get_q0()
+        self.V = self.get_v0()
+        self.n = {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
 
+    @staticmethod
+    def get_h(h, t):
+        return int(t**(2/3)) if h is None else h
+
+    def get_v0(self):
+        return {s: self.h for s in self.env.states}
+
+    def get_q0(self):
+        return {s: self.h * np.ones(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+
+    def _get_action(self, s):
+        assert self.env.actions[self.env.states_indices[s]] != []
+        return np.argmax(self.Q_est[s])
+
+    def run(self, s0):
+        for n in range(self.t):
+            self.env.reset(s0)
+            n_steps = 0
+
+            while not self.env.is_terminal(self.env.s) and n_steps < self.max_steps:
+                # Execute action, observe reward & new state
+                s = self.env.s
+                a_index = self._get_action(s)
+                r, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index], perform_action=False)
+
+                # Update variables
+                self.n[s][a_index] += 1
+                tau = self.n[s][a_index]
+                lr = (self.h + 1) / (self.h + tau)
+                bias = self.c * np.sqrt(self.h / tau)
+
+                # Learning step
+                self.Q[s][a_index] += lr * (r + self.gamma * self.V[new_s] + bias - self.Q[s][a_index])
+                self.Q_est[s][a_index] = np.min([self.Q_est[s][a_index], self.Q[s][a_index]])
+                self.V[s] = np.max(self.Q_est[s])
+
+                self.env.s = new_s
+                n_steps += 1
