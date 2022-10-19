@@ -13,11 +13,12 @@ class BaseEnvironment:
         self.trajectory = []
         self.rewards = []
 
-    def reset(self, s0):
+    def reset(self, s0, reset_rewards=True):
         self.rm.reset()
         self.s = s0
         self.trajectory = [s0]
-        self.rewards = []
+        if reset_rewards:
+            self.rewards = []
 
     def start(self, s0):
         self.s = s0
@@ -38,7 +39,7 @@ class BaseEnvironment:
         )
         return self.states[new_state_index]
 
-    def step(self, action, perform_action=None, new_state=None):
+    def step(self, action, perform_action=True, new_state=None):
         if new_state is None:
             new_state = self.get_next_state(action)
         reward = self.rm.step(new_state, perform_transition=perform_action)[0]
