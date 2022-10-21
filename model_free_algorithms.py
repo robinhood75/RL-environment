@@ -151,3 +151,48 @@ class OptimisticQLearning:
             self.Q[s][a_index] += lr * (r + self.gamma * self.V[new_s] + bias - self.Q[s][a_index])
             self.Q_est[s][a_index] = np.min([self.Q_est[s][a_index], self.Q[s][a_index]])
             self.V[s] = np.max(self.Q_est[s])
+
+
+class OQLRM(OptimisticQLearning):
+    """Optimistic Q-Learning for reward machines"""
+    def __init__(self, env: BaseEnvironment, t, c=None, delta=0.1):
+        super().__init__(env=env, t=t, c=c, delta=delta)
+
+    def get_q0(self):
+        return {u: {s: self.h * np.ones(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+                for u in self.env.rm.states}
+
+    def get_v0(self):
+        return {u: {s: self.h for s in self.env.states} for u in self.env.rm.states}
+
+    def _get_action(self, s):
+        assert self.env.actions[self.env.states_indices[s]] != []
+        return np.argmax(self.Q_est[self.env.rm.u][self.env.s])
+
+    def run(self, s0):
+        s = s0
+        for n in range(self.t):
+            if self.env.is_terminal(s):
+                # Get around weak communication assumption by transitioning to s0
+                self.env.reset(s0, reset_rewards=False)
+            s = self.env.s
+
+            # Take action and update parameters
+            a_index = self._get_action(s)
+            action = self.env.actions[self.env.states_indices[s]][a_index]
+            _, new_s = self.env.step(action=action, perform_action=True)
+            next_u = self.env.rm.u
+
+            self.n[s][a_index] += 1
+            tau = self.n[s][a_index]
+            lr = (self.h + 1) / (self.h + tau)
+            bias = self.c * np.sqrt(self.h / tau)
+
+            for u in self.env.rm.states:
+                self.env.rm.u = u
+                r, new_u = self.env.rm.step(s, perform_transition=False)
+                self.Q[u][s][a_index] += lr * (r + self.gamma * self.V[u][new_s] + bias - self.Q[u][s][a_index])
+                self.Q_est[u][s][a_index] = np.min([self.Q_est[u][s][a_index], self.Q[u][s][a_index]])
+                self.V[u][s] = np.max(self.Q_est[u][s])
+
+            self.env.rm.u = next_u

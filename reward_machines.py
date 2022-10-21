@@ -10,7 +10,7 @@ class BaseRewardMachine:
     def step(self, s, perform_transition=True):
         """
         Transition to new state of RM
-        :return: reward
+        :return: reward, new state
         """
         raise NotImplementedError
 
