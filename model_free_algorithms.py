@@ -6,11 +6,11 @@ class BaseQLearning:
     def __init__(self, env: BaseEnvironment, gamma, lr=0.1, eps=0.2, max_steps=100):
         self.env = env
         self.gamma = gamma
-        assert 0 <= gamma < 1
+        assert 0 <= gamma <= 1
         self.lr = lr
-        self.Q = self.get_q0()
         self.eps = eps
         self.max_steps = max_steps
+        self.Q = self.get_q0()
 
     def get_q0(self):
         raise NotImplementedError
@@ -190,9 +190,54 @@ class OQLRM(OptimisticQLearning):
 
             for u in self.env.rm.states:
                 self.env.rm.u = u
-                r, new_u = self.env.rm.step(s, perform_transition=False)
+                r, new_u = self.env.rm.step(new_s, perform_transition=False)
                 self.Q[u][s][a_index] += lr * (r + self.gamma * self.V[u][new_s] + bias - self.Q[u][s][a_index])
                 self.Q_est[u][s][a_index] = np.min([self.Q_est[u][s][a_index], self.Q[u][s][a_index]])
                 self.V[u][s] = np.max(self.Q_est[u][s])
 
             self.env.rm.u = next_u
+
+
+class UCBQL(BaseQLearning):
+    def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=10):
+        super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
+        assert bonus in ["hoeffding", "bernstein"]
+        self.bonus = bonus
+        self.n = {h: {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+                  for h in range(self.max_steps)}
+        self.c = c
+        self.V = self.get_v0()
+
+    def get_q0(self):
+        return {h:
+                {s: self.max_steps * np.ones(len(self.env.actions[self.env.states_indices[s]]))
+                 for s in self.env.states}
+                for h in range(self.max_steps)}
+
+    def get_v0(self):
+        return {h: {s: 0 for s in self.env.states} for h in range(self.max_steps)}
+
+    def _get_action(self, h, s):
+        assert self.env.actions[self.env.states_indices[s]] != []
+        return np.argmax(self.Q[h][s])
+
+    def run(self, s0, n_episodes):
+        for k in range(n_episodes):
+            s = s0
+            self.env.reset(s0, reset_rewards=False)
+            for h in range(self.max_steps):
+                a_index = self._get_action(h, s)
+                r, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index])
+                self.n[h][s][a_index] += 1
+                t = self.n[h][s][a_index]
+                if self.bonus == "hoeffding":
+                    b = self.c * np.sqrt(self.max_steps**3 / t)
+                elif self.bonus == "bernstein":
+                    raise NotImplementedError  # see Algorithm 2 of Jin et al.
+                else:
+                    raise ValueError(f"Unknown bonus {self.bonus}")
+                lr = (self.max_steps + 1) / (self.max_steps + t)
+                self.Q[h][s][a_index] += lr * (r + self.V[h][s] + b - self.Q[h][s][a_index])
+                self.V[h][s] = min(self.max_steps, np.max(self.Q[h][s]))
+                s = self.env.s
+
