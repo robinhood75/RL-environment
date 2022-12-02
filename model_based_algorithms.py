@@ -80,3 +80,32 @@ class ValueIteration:
             print(f"VI stopped after {self.n_steps} iterations")
         return [self.step_s(s, return_argmax=True) for s in self.env.states]
 
+
+class ValueDynamicProgramming:
+    """For finite-horizon MDPs"""
+    def __init__(self, env: BaseEnvironment, h):
+        self.env = env
+        self.h = h
+        self.v_fn = self.get_v0(self.env, h)
+
+    @staticmethod
+    def get_v0(env: BaseEnvironment, h):
+        v = {s: np.zeros(h) for s in env.states}
+        # for s in v.keys():
+        #     v[s][-1] = env.rm.step(s, perform_transition=False)[0]
+        return v
+
+    def run(self):
+        for h in np.flip(np.arange(self.h - 1)):
+            for s in self.env.states:
+                self.env.s = s
+                actions = self.env.actions[self.env.states_indices[s]]
+                rewards = np.array([[self.env.step(a, new_state=x, perform_action=False)[0] for x in self.env.states]
+                                    for a in actions])
+                exp_r = [self.env.transition_p[self.env.states_indices[s]][a] @
+                         np.array([self.v_fn[x][h + 1] + rewards[a_index][x_index]
+                                   for x_index, x in enumerate(self.env.states)])
+                         for a_index, a in enumerate(actions)]
+                self.v_fn[s][h] = np.max(exp_r)
+        return self.v_fn
+
