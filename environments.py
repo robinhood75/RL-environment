@@ -6,6 +6,7 @@ class BaseEnvironment:
     def __init__(self, rm: BaseRewardMachine):
         self.rm = rm
         self.states = None
+        self.base_actions = None
         self.actions = None
         self.s = None
         self.states_indices = None
@@ -31,6 +32,10 @@ class BaseEnvironment:
     @property
     def n_states(self):
         return len(self.states)
+
+    @property
+    def n_actions(self):
+        return len(self.base_actions)
 
     def get_next_state(self, action):
         new_state_index = np.random.choice(
@@ -69,8 +74,8 @@ class GridWorld(BaseEnvironment):
         self.p = p
         self.states = [(x, y) for x in range(x_max) for y in range(y_max) if (x, y) not in walls]
         self.states_indices = {s: i for (i, s) in enumerate(self.states)}
-        base_actions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-        self.actions = [[a for a in base_actions
+        self.base_actions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        self.actions = [[a for a in self.base_actions
                          if (np.array(a) + np.array(s) < np.array([x_max, y_max])).all()
                          and (np.array(a) + np.array(s) >= np.zeros(2)).all()
                          and tuple((np.array(a) + np.array(s)).tolist()) not in walls
@@ -100,8 +105,8 @@ class RiverSwim(BaseEnvironment):
         self.p = p
         self.states = range(n)
         self.states_indices = range(n)
-        base_actions = [-1, 1]
-        self.actions = [[a for a in base_actions if 0 <= a + s < n]
+        self.base_actions = [-1, 1]
+        self.actions = [[a for a in self.base_actions if 0 <= a + s < n]
                         for s in self.states]
         self.transition_p = self.get_transition_p()
 

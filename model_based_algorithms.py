@@ -109,3 +109,119 @@ class ValueDynamicProgramming:
                 self.v_fn[s][h] = np.max(exp_r)
         return self.v_fn
 
+
+class UCRL2:
+    def __init__(self, env: BaseEnvironment, delta):
+        self.env = env
+        self.delta = delta
+        self.n = self.get_n0()
+        self.v = self.get_v0()
+        self.r = self.get_r0()
+        self.counts = self.get_init_counts()
+        self.t0 = 0
+        self.t = 1
+        self.k = 1
+
+    def run(self, n_episodes, s0):
+        s = s0
+        while self.t < n_episodes:
+            tk = self.t
+            for s in self.env.states:
+                self.n[s] += self.v[s]
+            r_est = {s: self.r[s] / np.array([max(1, val) for val in self.n[s]]) for s in self.env.states}
+            p_est = {s: {a: self.counts[s][a] / max(1, self.n[s][i])
+                         for i, a in enumerate(self.env.actions[self.env.states_indices[s]])}
+                     for s in self.env.states}
+            beta, beta_p = self.get_bonuses()
+            pi = self.evi(p_est, r_est, beta, beta_p, 1 / np.sqrt(tk)); print(pi)
+            self.v = self.get_v0()
+            while not self._stopping_criterion_ucrl2(s, pi):
+                self.env.s = s
+                action_idx = pi[s]
+                a = self.env.actions[s][action_idx]
+                r, new_s = self.env.step(a, perform_action=True)
+                self.r[s][action_idx] += r
+                self.v[s][action_idx] += 1
+                self.counts[s][a][self.env.states_indices[new_s]] += 1
+                self.t += 1
+                s = new_s
+
+    def _stopping_criterion_ucrl2(self, s, pi):
+        return self.v[s][pi[s]] >= max(1, self.n[s][pi[s]])
+
+    def get_bonuses(self):
+        beta = {s: np.sqrt(14 * self.env.n_states / np.array([max(1, val) for val in self.n[s]]) * np.log(2 * self.env.n_actions * self.t / self.delta))
+                for s in self.env.states}
+        beta_p = {s: np.sqrt(3.5 / np.array([max(1, val) for val in self.n[s]]) * np.log(2 * self.env.n_states * self.env.n_actions * self.t / self.delta))
+                  for s in self.env.states}
+        return beta, beta_p
+
+    def get_init_counts(self):
+        return {s: {a: np.zeros(self.env.n_states) for a in self.env.actions[self.env.states_indices[s]]}
+                for s in self.env.states}
+
+    def get_r0(self):
+        return {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+
+    def get_v0(self):
+        return {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+
+    def get_n0(self):
+        return {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+
+    def evi(self, p_est, r_est, beta, beta_p, eps, n_max=1000):
+        #TODO: replace tk with eps=0.0
+        v = self.get_v0_evi()
+        last_v = v.copy()
+        n = -1
+        mu = {s: r_est[s] + beta_p[s] for s in self.env.states}
+        p_p = {s: {a: None for a in self.env.actions[self.env.states_indices[s]]}
+               for s in self.env.states}
+
+        while not UCRL2._evi_stopping_criterion(v, last_v, eps, n) and n < n_max:
+            n += 1
+            new_v = {}
+            for s in self.env.states:
+                for i, a in enumerate(self.env.actions[self.env.states_indices[s]]):
+                    p_p[s][a] = self._get_p_p(v, beta[s][i], p_est[s][a])
+            for s in self.env.states:
+                new_v[s] = np.max([mu[s] +
+                                   np.array([np.sum([p_p[s][a][i] * v[x] for i, x in enumerate(self.env.states)])
+                                             for a in self.env.actions[self.env.states_indices[s]]])
+                                   ])
+            v = new_v.copy()
+            last_v = v.copy()
+
+        pi = {s: np.argmax([mu[s] +
+                            np.array([np.sum([p_p[s][a][i] * v[x] for i, x in enumerate(self.env.states)])
+                                      for a in self.env.actions[self.env.states_indices[s]]])
+                            ])
+              for s in self.env.states}
+        return pi
+
+    def _get_p_p(self, v, beta, p_est):
+        """
+        Algorithm 3 in Sadegh's lecture notes
+        beta, p_est are specific to (s, a)
+        """
+        tmp = np.flip(np.argsort(list(v.values())))
+        sorted_s = [list(v.keys())[idx] for idx in tmp]
+        q = np.zeros(self.env.n_states)
+        q[0] = min(1, p_est[sorted_s[0]] + beta / 2)
+        q[1:] = p_est[sorted_s[1:]]
+        l_ = self.env.n_states - 1
+        while q.sum() > 1:
+            q[sorted_s[l_]] = max(0, 1 - q.sum() + q[sorted_s[l_]])
+            l_ -= 1
+        return q
+
+    @staticmethod
+    def _evi_stopping_criterion(v, last_v, eps, n):
+        if n < 0:
+            return False
+        else:
+            diff = np.array([val - last_val for val, last_val in zip(list(v.values()), list(last_v.values()))])
+            return np.max(diff) - np.min(diff) < eps
+
+    def get_v0_evi(self):
+        return {s: 0 for s in self.env.states}
