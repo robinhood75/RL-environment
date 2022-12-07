@@ -222,7 +222,9 @@ class UCBQL(BaseQLearning):
         return np.argmax(self.Q[h][s])
 
     def run(self, s0, n_episodes):
-        for k in range(n_episodes):
+        k = 0
+        while k * self.max_steps < n_episodes:
+            k += 1
             s = s0
             self.env.reset(s0, reset_rewards=False)
             for h in range(self.max_steps):

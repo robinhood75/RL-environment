@@ -133,7 +133,7 @@ class UCRL2:
                          for i, a in enumerate(self.env.actions[self.env.states_indices[s]])}
                      for s in self.env.states}
             beta, beta_p = self.get_bonuses()
-            pi = self.evi(p_est, r_est, beta, beta_p, 1 / np.sqrt(tk)); print(pi)
+            pi = self.evi(p_est, r_est, beta, beta_p, 1 / np.sqrt(tk))
             self.v = self.get_v0()
             while not self._stopping_criterion_ucrl2(s, pi):
                 self.env.s = s
@@ -225,3 +225,92 @@ class UCRL2:
 
     def get_v0_evi(self):
         return {s: 0 for s in self.env.states}
+
+
+class UCBVI:
+    """This algorithm assumes that the reward function is known. So before running it we compute estimates."""
+    def __init__(self, env: BaseEnvironment, episode_length, bonus="hoeffding", delta=0.05, c=0.0002):
+        self.env = env
+        self.episode_length = episode_length
+        self.bonus = bonus
+        self.delta = delta
+        self.c = c
+        self.n = self.get_n0()
+        self.n_p = self.get_n_p0()
+        self.q = self.get_q0()
+        self.counts = self.get_init_counts()
+        self.exp_r = self.estimate_rewards(self.env, n_epochs=10000)
+
+    def run(self, s0, n_episodes):
+        k = 0
+        while k * self.episode_length < n_episodes:
+            k += 1
+            s = s0
+            self.update_ucb_q_values(k + 1)
+            for h in range(self.episode_length):
+                a_idx = np.argmax(self.q[h][s])
+                a = self.env.actions[self.env.states_indices[s]][a_idx]
+                self.env.s = s
+                r, new_s = self.env.step(a)
+                self.n[s][a_idx] += 1
+                self.counts[s][a][self.env.states_indices[new_s]] += 1
+                self.n_p[h][s][a_idx] += 1
+                s = new_s
+
+    def update_ucb_q_values(self, k):
+        set_ = {s: [a for i, a in enumerate(self.env.actions[self.env.states_indices[s]]) if self.n[s][i] > 0]
+                for s in self.env.states}
+        p_hat = {s: {a: self.counts[s][a] / self.n[s][i] for i, a in enumerate(v)} for s, v in set_.items()}
+        v = {s: 0 for s in self.env.states}
+        for h in np.flip(range(self.episode_length)):
+            for s in self.env.states:
+                for i, a in enumerate(self.env.actions[self.env.states_indices[s]]):
+                    if a in set_[s]:
+                        b = self.get_bonus_term(t=k * self.episode_length, n=self.n[s][i])
+                        self.q[h][s][i] = np.min([self.q[h][s][i], self.episode_length,
+                                                  self.exp_r[s][i] + p_hat[s][a] @ np.array(list(v.values())) + self.c * b])
+                    else:
+                        self.q[h][s][i] = self.episode_length
+                v[s] = np.max(self.q[h][s])
+
+    def get_init_counts(self):
+        return {s: {a: np.zeros(self.env.n_states) for a in self.env.actions[self.env.states_indices[s]]}
+                for s in self.env.states}
+
+    def get_r0(self):
+        return {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+
+    def get_q0(self):
+        return {h:
+                {s: np.zeros(len(self.env.actions[self.env.states_indices[s]]))
+                 for s in self.env.states}
+                for h in range(self.episode_length)}
+
+    def get_n0(self):
+        return {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+
+    def get_n_p0(self):
+        return {h: {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+                for h in range(self.episode_length)}
+
+    def get_bonus_term(self, t, n, p_hat=None, v=None, n_p=None):
+        l_ = np.log(5 * self.env.n_states * self.env.n_actions * t / self.delta)
+        if self.bonus == "hoeffding":
+            b = 7 * self.episode_length * l_ / np.sqrt(n)
+        elif self.bonus == "bernstein":
+            assert p_hat is not None and v is not None and n_p is not None
+            raise NotImplementedError
+        else:
+            raise ValueError(f"Unknown bonus {self.bonus}")
+        return b
+
+    @staticmethod
+    def estimate_rewards(env: BaseEnvironment, n_epochs=10000):
+        r_tot = {s: np.zeros(len(env.actions[env.states_indices[s]])) for s in env.states}
+        for n in range(n_epochs):
+            for s in env.states:
+                for i, a in enumerate(env.actions[env.states_indices[s]]):
+                    env.s = s
+                    r_tot[s][i] += env.step(action=a, perform_action=False)[0] / n_epochs
+        print(f"Estimates computed. r_est: {r_tot}")
+        return r_tot

@@ -27,6 +27,7 @@ else:
 
 
 def _get_algo(algo: str, env_, t, c=1., max_steps=50):
+    # TODO: make a proper factory (if possible)
     if algo == "oql":
         cls = OptimisticQLearning(env=env_, t=t, c=c)
     elif algo == "oqlrm":
@@ -35,6 +36,8 @@ def _get_algo(algo: str, env_, t, c=1., max_steps=50):
         cls = UCBQL(env=env_, max_steps=max_steps, c=c)
     elif algo == "ucrl2":
         cls = UCRL2(env=env_, delta=0.05)
+    elif algo == "ucbvi":
+        cls = UCBVI(env=env_, episode_length=max_steps)
     else:
         raise ValueError(f"Unknown algorithm {algo}")
     return cls
@@ -54,7 +57,7 @@ def plot_regret(t, env_: BaseEnvironment, s0, opt_gain, n_runs=10, algo="oql", s
     for run_nb in range(n_runs):
         env_.reset(s0=s0, reset_rewards=True)
         oql = _get_algo(algo=algo, env_=env_, t=t, c=0.1)
-        oql.run(n_episodes=t, s0=0)
+        oql.run(s0=0, n_episodes=t)
         regret = np.array(_get_regret(t, opt_gain, env_.rewards))
         regrets.append(regret)
 
@@ -85,7 +88,7 @@ def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_r
             t = int(t)
             env_.reset(s0, reset_rewards=True)
             oql = _get_algo(algo=algo, env_=env_, t=t)
-            oql.run(s0=s0)
+            oql.run(s0=s0, n_episodes=t)
             regrets[-1].append(t * opt_gain - np.sum(env_.rewards))
 
     regrets = np.mean(regrets, axis=0)
@@ -105,5 +108,5 @@ if __name__ == '__main__':
     v_fn = dp.run()
     opt_gain = v_fn[0][0] / 50
 
-    plot_regret(t=500000, env_=env, s0=0, opt_gain=0.5, n_runs=1, algo="ucrl2")
+    plot_regret(t=500000, env_=env, s0=0, opt_gain=opt_gain, n_runs=1, algo="ucbvi")
 
