@@ -1,5 +1,6 @@
 import numpy as np
 from reward_machines import BaseRewardMachine
+from copy import deepcopy
 
 
 class BaseEnvironment:
@@ -47,7 +48,10 @@ class BaseEnvironment:
     def step(self, action, perform_action=True, new_state=None):
         if new_state is None:
             new_state = self.get_next_state(action)
-        reward = self.rm.step(new_state, perform_transition=perform_action)[0]
+        if self.rm.is_reward_td:
+            reward = self.rm.step(new_state, perform_transition=perform_action, state=self.s)
+        else:
+            reward = self.rm.step(new_state, perform_transition=perform_action)[0]
         if perform_action:
             self.s = new_state
             self.trajectory.append(new_state)
@@ -123,3 +127,26 @@ class RiverSwim(BaseEnvironment):
                 transition_p[s][a][next_states[i]] = self.p
                 transition_p[s][a][s] = 1 - self.p
         return transition_p
+
+
+def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
+    """Make sure that env has been reset before"""
+    raise NotImplementedError
+    assert env.rewards == []
+    cp = deepcopy(env)
+    cp.states = [(s, u) for s in env.states for u in rm.states]
+
+    transition_p = [{a: np.zeros(cp.n_states) for a in cp.actions[s[0]]}
+                    for s in cp.states]
+    for i, s in enumerate(cp.states):
+        for a in env.actions[s[0]]:
+            for j, new_s in enumerate(cp.states):
+                rm.u = s[1]
+                _, new_u = rm.step(new_s[0])
+                if new_s[1] == new_u:
+                    cp.transition_p[i][a][j] = env.transition_p[s[0]][a][i]
+    cp.transition_p = transition_p
+
+    return cp
+
+

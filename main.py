@@ -26,7 +26,7 @@ else:
     raise ValueError(f"Unknown task {args.task}")
 
 
-def _get_algo(algo: str, env_, t, c=1., max_steps=50):
+def _get_algo(algo: str, env_, t, c=1., max_steps=20):
     # TODO: make a proper factory (if possible)
     if algo == "oql":
         cls = OptimisticQLearning(env=env_, t=t, c=c)
@@ -52,19 +52,30 @@ def _get_regret(t, _opt_gain, _rewards):
     return ret
 
 
-def plot_regret(t, env_: BaseEnvironment, s0, opt_gain, n_runs=10, algo="oql", save_to="fig.svg"):
+def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fig.svg", episode_length=None,
+                title=None, opt_gain=None, dp=None):
     regrets = []
     for run_nb in range(n_runs):
+        print(f"Run {run_nb+1}/{n_runs}")
         env_.reset(s0=s0, reset_rewards=True)
-        oql = _get_algo(algo=algo, env_=env_, t=t, c=0.1)
-        oql.run(s0=0, n_episodes=t)
+        oql = _get_algo(algo=algo, env_=env_, t=t, c=0.1, max_steps=episode_length)
+        initial_points = oql.run(s0=0, n_episodes=t)
+        if opt_gain is None:
+            assert dp is not None and episode_length is not None
+            opt_gains = [g/episode_length for g in dp]
+            s0_counts = np.unique(initial_points, return_counts=True)[1]
+            s0_frequencies = s0_counts / s0_counts.sum()
+            opt_gain = s0_frequencies @ opt_gains
         regret = np.array(_get_regret(t, opt_gain, env_.rewards))
         regrets.append(regret)
 
     regrets = np.mean(regrets, axis=0)
-    plt.loglog(range(t), regrets)
+    plt.plot(range(t), regrets)
+    plt.xscale("log")
     plt.xlabel("t")
     plt.ylabel("R_t")
+    if title is not None:
+        plt.title(title)
     plt.savefig(save_to)
     plt.show()
 
@@ -92,7 +103,9 @@ def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_r
             regrets[-1].append(t * opt_gain - np.sum(env_.rewards))
 
     regrets = np.mean(regrets, axis=0)
-    plt.loglog(t_array, regrets)
+    plt.plot(t_array, regrets)
+    plt.xscale('log')
+    plt.yscale('linear')
     plt.xlabel("T")
     plt.ylabel("R")
     plt.savefig(save_to)
@@ -100,13 +113,30 @@ def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_r
 
 
 if __name__ == '__main__':
-    n = 6
-    rm = OneStateRM({5: 1}, u0=0)
-    env = RiverSwim(rm, n=n, p=0.9)
+    n = 3
+    h = 3
+    rewards_dict = {0: 0.05, n-1: 1}
+    rm = OneStateRM(rewards_dict=rewards_dict)
+    env = RiverSwim(rm, n=n, p=0.4)
 
-    dp = ValueDynamicProgramming(env=env, h=51)
+    # Get Sadegh's transition probabilities
+    env.transition_p[1][1] = [0.05, 0.6, 0.35]
+    env.transition_p[2][-1] = [0, 0.6, 0.4]
+    env.transition_p[1][-1] = [1., 0, 0]
+
+    dp = ValueDynamicProgramming(env=env, h=h+1)
     v_fn = dp.run()
-    opt_gain = v_fn[0][0] / 50
+    opt_gain = v_fn[0][0] / h
 
-    plot_regret(t=500000, env_=env, s0=0, opt_gain=opt_gain, n_runs=1, algo="ucbvi")
+    dp = [v_fn[k][0] for k in v_fn.keys()]
+
+    plot_regret(t=int(1e4),
+                env_=env,
+                s0=0,
+                opt_gain=None,
+                n_runs=500,
+                algo="ucbql",
+                episode_length=h,
+                title="UCBQL (case 1)",
+                dp=dp)
 

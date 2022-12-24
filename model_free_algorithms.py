@@ -1,5 +1,6 @@
 import numpy as np
-from environments import BaseEnvironment
+from environments import BaseEnvironment, get_cross_product
+from copy import copy
 
 
 class BaseQLearning:
@@ -199,9 +200,11 @@ class OQLRM(OptimisticQLearning):
 
 
 class UCBQL(BaseQLearning):
-    def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=10):
+    def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=10,
+                 random_reset=True):
         super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
         assert bonus in ["hoeffding", "bernstein"]
+        self.random_reset = random_reset
         self.bonus = bonus
         self.n = {h: {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
                   for h in range(self.max_steps)}
@@ -222,11 +225,16 @@ class UCBQL(BaseQLearning):
         return np.argmax(self.Q[h][s])
 
     def run(self, s0, n_episodes):
+        initial_points = []
         k = 0
         while k * self.max_steps < n_episodes:
             k += 1
-            s = s0
-            self.env.reset(s0, reset_rewards=False)
+            if self.random_reset:
+                s = self.env.states[np.random.randint(self.env.n_states)]
+            else:
+                s = s0
+            initial_points.append(copy(s))
+            self.env.reset(s, reset_rewards=False)
             for h in range(self.max_steps):
                 a_index = self._get_action(h, s)
                 r, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index])
@@ -242,4 +250,4 @@ class UCBQL(BaseQLearning):
                 self.Q[h][s][a_index] += lr * (r + self.V[h][s] + b - self.Q[h][s][a_index])
                 self.V[h][s] = min(self.max_steps, np.max(self.Q[h][s]))
                 s = self.env.s
-
+        return initial_points

@@ -1,13 +1,17 @@
+import numpy as np
+
+
 class BaseRewardMachine:
     def __init__(self, u0):
         self.states = None
         self.u = u0
         self.u0 = u0
+        self.is_reward_td = False
 
     def reset(self):
         self.u = self.u0
 
-    def step(self, s, perform_transition=True):
+    def step(self, s, perform_transition=True, state=None):
         """
         Transition to new state of RM
         :return: reward, new state
@@ -25,7 +29,7 @@ class RiverSwimPatrol(BaseRewardMachine):
         self.n_states_mdp = n_states_mdp
         self.states = ['LR', 'RL']
 
-    def step(self, s, perform_transition=True):
+    def step(self, s, perform_transition=True, state=None):
         if s == 0 and self.u == 'RL':
             new_u = 'LR'
             r = 1
@@ -47,9 +51,26 @@ class OneStateRM(BaseRewardMachine):
         self.states = list(rewards_dict.keys())
         self.rewards_dict = rewards_dict
 
-    def step(self, s, perform_transition=True):
+    def step(self, s, perform_transition=True, state=None):
         if s in self.rewards_dict.keys():
             r = self.rewards_dict[s]
+        else:
+            r = 0
+        return r, None
+
+
+class OneStateRMTD(BaseRewardMachine):
+    """transition-dependent"""
+    def __init__(self, rewards_dict, u0=None):
+        super().__init__(u0=u0)
+        self.is_reward_td = True
+        self.states = np.unique(np.array(list(rewards_dict.keys())).flatten())
+        self.rewards_dict = rewards_dict
+
+    def step(self, s, perform_transition=True, state=None):
+        assert state is not None
+        if (s, state) in self.rewards_dict.keys():
+            r = self.rewards_dict[(s, state)]
         else:
             r = 0
         return r, None

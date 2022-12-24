@@ -1,5 +1,6 @@
-from environments import BaseEnvironment, GridWorld, RiverSwim
+from environments import *
 import numpy as np
+from copy import copy
 
 
 class ValueIteration:
@@ -229,7 +230,7 @@ class UCRL2:
 
 class UCBVI:
     """This algorithm assumes that the reward function is known. So before running it we compute estimates."""
-    def __init__(self, env: BaseEnvironment, episode_length, bonus="hoeffding", delta=0.05, c=0.0002):
+    def __init__(self, env: BaseEnvironment, episode_length, bonus="hoeffding", delta=0.05, c=1):
         self.env = env
         self.episode_length = episode_length
         self.bonus = bonus
@@ -241,12 +242,17 @@ class UCBVI:
         self.counts = self.get_init_counts()
         self.exp_r = self.estimate_rewards(self.env, n_epochs=10000)
 
-    def run(self, s0, n_episodes):
+    def run(self, s0, n_episodes, random_reset=True):
+        initial_points = []
         k = 0
         while k * self.episode_length < n_episodes:
             k += 1
-            s = s0
-            self.update_ucb_q_values(k + 1)
+            if random_reset:
+                s = self.env.states[np.random.randint(self.env.n_states)]
+            else:
+                s = s0
+            initial_points.append(copy(s))
+            self.update_ucb_q_values(n_episodes)
             for h in range(self.episode_length):
                 a_idx = np.argmax(self.q[h][s])
                 a = self.env.actions[self.env.states_indices[s]][a_idx]
@@ -256,6 +262,7 @@ class UCBVI:
                 self.counts[s][a][self.env.states_indices[new_s]] += 1
                 self.n_p[h][s][a_idx] += 1
                 s = new_s
+        return initial_points
 
     def update_ucb_q_values(self, k):
         set_ = {s: [a for i, a in enumerate(self.env.actions[self.env.states_indices[s]]) if self.n[s][i] > 0]
@@ -266,7 +273,7 @@ class UCBVI:
             for s in self.env.states:
                 for i, a in enumerate(self.env.actions[self.env.states_indices[s]]):
                     if a in set_[s]:
-                        b = self.get_bonus_term(t=k * self.episode_length, n=self.n[s][i])
+                        b = self.get_bonus_term(t=self.n[s][i], n=self.n[s][i])
                         self.q[h][s][i] = np.min([self.q[h][s][i], self.episode_length,
                                                   self.exp_r[s][i] + p_hat[s][a] @ np.array(list(v.values())) + self.c * b])
                     else:
@@ -305,7 +312,7 @@ class UCBVI:
         return b
 
     @staticmethod
-    def estimate_rewards(env: BaseEnvironment, n_epochs=10000):
+    def estimate_rewards(env: BaseEnvironment, n_epochs=100000):
         r_tot = {s: np.zeros(len(env.actions[env.states_indices[s]])) for s in env.states}
         for n in range(n_epochs):
             for s in env.states:
