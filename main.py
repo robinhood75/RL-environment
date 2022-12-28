@@ -59,14 +59,14 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
         print(f"Run {run_nb+1}/{n_runs}")
         env_.reset(s0=s0, reset_rewards=True)
         oql = _get_algo(algo=algo, env_=env_, t=t, c=0.1, max_steps=episode_length)
-        initial_points = oql.run(s0=0, n_episodes=t)
+        initial_points = oql.run(s0=s0, n_episodes=t)
         if opt_gain is None:
             assert dp is not None and episode_length is not None
             opt_gains = [g/episode_length for g in dp]
             s0_counts = np.unique(initial_points, return_counts=True)[1]
-            s0_frequencies = s0_counts / s0_counts.sum()
-            opt_gain = s0_frequencies @ opt_gains
-        regret = np.array(_get_regret(t, opt_gain, env_.rewards))
+            s0_frequencies = s0_counts / s0_counts.sum(); print(s0_frequencies)
+            opt_gain_tmp = s0_frequencies @ opt_gains
+        regret = np.array(_get_regret(t, opt_gain_tmp, env_.rewards))
         regrets.append(regret)
 
     regrets = np.mean(regrets, axis=0)
@@ -112,31 +112,41 @@ def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_r
     plt.show()
 
 
+def get_env_1():
+    n_ = 3
+    rewards_dict_ = {0: 0.05, n-1: 1}
+    rm_ = OneStateRM(rewards_dict=rewards_dict_)
+    env_ = RiverSwim(rm_, n=n_, p=0.4)
+
+    # Get Sadegh's transition probabilities
+    env_.transition_p[1][1] = [0.05, 0.6, 0.35]
+    env_.transition_p[2][-1] = [0, 0.6, 0.4]
+    env_.transition_p[1][-1] = [1., 0, 0]
+    return env_
+
+
 if __name__ == '__main__':
     n = 3
     h = 3
-    rewards_dict = {0: 0.05, n-1: 1}
+    rewards_dict = {n-1: 1}
     rm = OneStateRM(rewards_dict=rewards_dict)
-    env = RiverSwim(rm, n=n, p=0.4)
+    env = RiverSwim(rm, n=n, p=0.9)
 
-    # Get Sadegh's transition probabilities
-    env.transition_p[1][1] = [0.05, 0.6, 0.35]
-    env.transition_p[2][-1] = [0, 0.6, 0.4]
-    env.transition_p[1][-1] = [1., 0, 0]
+    # env = get_env_1()
 
     dp = ValueDynamicProgramming(env=env, h=h+1)
-    v_fn = dp.run()
-    opt_gain = v_fn[0][0] / h
+    v_fn = dp.run(); print(v_fn)
+    opt_gain = v_fn[2][0] / h
 
     dp = [v_fn[k][0] for k in v_fn.keys()]
 
-    plot_regret(t=int(1e4),
+    plot_regret(t=int(4e7),
                 env_=env,
-                s0=0,
+                s0=None,
                 opt_gain=None,
-                n_runs=500,
-                algo="ucbql",
+                n_runs=1,
+                algo="ucbvi",
                 episode_length=h,
-                title="UCBQL (case 1)",
+                title="UCBVI",
                 dp=dp)
 

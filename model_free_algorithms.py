@@ -200,8 +200,8 @@ class OQLRM(OptimisticQLearning):
 
 
 class UCBQL(BaseQLearning):
-    def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=10,
-                 random_reset=True):
+    def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=2, delta=0.05,
+                 random_reset=True, iota_type=3):
         super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
         assert bonus in ["hoeffding", "bernstein"]
         self.random_reset = random_reset
@@ -210,6 +210,8 @@ class UCBQL(BaseQLearning):
                   for h in range(self.max_steps)}
         self.c = c
         self.V = self.get_v0()
+        self.iota_type = iota_type
+        self.delta = delta
 
     def get_q0(self):
         return {h:
@@ -225,6 +227,9 @@ class UCBQL(BaseQLearning):
         return np.argmax(self.Q[h][s])
 
     def run(self, s0, n_episodes):
+        # TODO: change "n_episodes"'s name
+        if self.iota_type in [1, 3]:
+            iota = self.get_iota(n_episodes)
         initial_points = []
         k = 0
         while k * self.max_steps < n_episodes:
@@ -241,7 +246,9 @@ class UCBQL(BaseQLearning):
                 self.n[h][s][a_index] += 1
                 t = self.n[h][s][a_index]
                 if self.bonus == "hoeffding":
-                    b = self.c * np.sqrt(self.max_steps**3 / t)
+                    if self.iota_type == 2:
+                        iota = np.log(self.env.n_states * self.env.n_actions * np.sqrt(t) / self.delta)
+                    b = self.c * np.sqrt(self.max_steps**3 * iota / t)
                 elif self.bonus == "bernstein":
                     raise NotImplementedError  # see Algorithm 2 of Jin et al.
                 else:
@@ -251,3 +258,11 @@ class UCBQL(BaseQLearning):
                 self.V[h][s] = min(self.max_steps, np.max(self.Q[h][s]))
                 s = self.env.s
         return initial_points
+
+    def get_iota(self, n_episodes):
+        ret = self.env.n_states * self.env.n_actions / self.delta
+        if self.iota_type == 1:
+            ret *= n_episodes
+        elif self.iota_type == 3:
+            ret *= np.log(n_episodes)
+        return np.log(ret)
