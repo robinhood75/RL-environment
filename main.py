@@ -32,8 +32,10 @@ def _get_algo(algo: str, env_, t, c=1., max_steps=20):
         cls = OptimisticQLearning(env=env_, t=t, c=c)
     elif algo == "oqlrm":
         cls = OQLRM(env=env_, t=t, c=c)
-    elif algo == "ucbql":
-        cls = UCBQL(env=env_, max_steps=max_steps, c=c)
+    elif algo == "ucbql-h":
+        cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="hoeffding")
+    elif algo == "ucbql-b":
+        cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="bernstein")
     elif algo == "ucrl2":
         cls = UCRL2(env=env_, delta=0.05)
     elif algo == "ucbvi":
@@ -66,6 +68,8 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
             s0_counts = np.unique(initial_points, return_counts=True)[1]
             s0_frequencies = s0_counts / s0_counts.sum(); print(s0_frequencies)
             opt_gain_tmp = s0_frequencies @ opt_gains
+        else:
+            opt_gain_tmp = opt_gain
         regret = np.array(_get_regret(t, opt_gain_tmp, env_.rewards))
         regrets.append(regret)
 
@@ -128,11 +132,11 @@ def get_env_1():
 if __name__ == '__main__':
     n = 3
     h = 3
-    rewards_dict = {n-1: 1}
-    rm = OneStateRM(rewards_dict=rewards_dict)
-    env = RiverSwim(rm, n=n, p=0.9)
+    # rewards_dict = {n-1: 1}
+    # rm = OneStateRM(rewards_dict=rewards_dict)
+    # env = RiverSwim(rm, n=n, p=0.9)
 
-    # env = get_env_1()
+    env = get_env_1()
 
     dp = ValueDynamicProgramming(env=env, h=h+1)
     v_fn = dp.run(); print(v_fn)
@@ -140,13 +144,13 @@ if __name__ == '__main__':
 
     dp = [v_fn[k][0] for k in v_fn.keys()]
 
-    plot_regret(t=int(4e7),
+    plot_regret(t=int(5e5),
                 env_=env,
                 s0=None,
                 opt_gain=None,
-                n_runs=1,
-                algo="ucbvi",
+                n_runs=50,
+                algo="ucbql-b",
                 episode_length=h,
-                title="UCBVI",
+                title="ucbql bernstein",
                 dp=dp)
 

@@ -1,6 +1,7 @@
 import numpy as np
 from environments import BaseEnvironment, get_cross_product
 from copy import copy
+from reward_machines import BaseRewardMachine
 
 
 class BaseQLearning:
@@ -201,7 +202,7 @@ class OQLRM(OptimisticQLearning):
 
 class UCBQL(BaseQLearning):
     def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=2, delta=0.05,
-                 random_reset=True, iota_type=3):
+                 random_reset=True, iota_type=2, c1=0.5, c2=0.5):
         super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
         assert bonus in ["hoeffding", "bernstein"]
         self.random_reset = random_reset
@@ -212,6 +213,13 @@ class UCBQL(BaseQLearning):
         self.V = self.get_v0()
         self.iota_type = iota_type
         self.delta = delta
+        self.mu = self.get_mu0()
+        self.sigma = self.get_mu0()
+        self.beta = self.get_mu0()
+        self.c1 = c1
+        self.c2 = c2
+        if self.bonus == "bernstein":
+            assert c1 is not None and c2 is not None
 
     def get_q0(self):
         return {h:
@@ -243,18 +251,26 @@ class UCBQL(BaseQLearning):
             for h in range(self.max_steps):
                 a_index = self._get_action(h, s)
                 r, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index])
+                next_v = self.V[h + 1][new_s] if h < self.max_steps - 1 else 0
                 self.n[h][s][a_index] += 1
                 t = self.n[h][s][a_index]
+                lr = (self.max_steps + 1) / (self.max_steps + t)
+                if self.iota_type == 2:
+                    iota = np.log(self.env.n_states * self.env.n_actions * np.sqrt(t) / self.delta)
                 if self.bonus == "hoeffding":
-                    if self.iota_type == 2:
-                        iota = np.log(self.env.n_states * self.env.n_actions * np.sqrt(t) / self.delta)
                     b = self.c * np.sqrt(self.max_steps**3 * iota / t)
                 elif self.bonus == "bernstein":
-                    raise NotImplementedError  # see Algorithm 2 of Jin et al.
+                    self.mu[h][s][a_index] += next_v
+                    self.sigma[h][s][a_index] += next_v ** 2
+                    new_beta = min(
+                        self.c1 * (np.sqrt(self.max_steps / t * (((self.sigma[h][s][a_index] - self.mu[h][s][a_index])**2 / t) + self.max_steps) * iota) + np.sqrt(self.max_steps ** 7 * self.env.n_actions * self.env.n_states) * iota / t),
+                        self.c2 * np.sqrt(self.max_steps ** 3 * iota / t)
+                    )
+                    b = (new_beta - (1 - lr) * self.beta[h][s][a_index]) / (2 * lr)
+                    self.beta[h][s][a_index] = new_beta
                 else:
                     raise ValueError(f"Unknown bonus {self.bonus}")
-                lr = (self.max_steps + 1) / (self.max_steps + t)
-                self.Q[h][s][a_index] += lr * (r + self.V[h][s] + b - self.Q[h][s][a_index])
+                self.Q[h][s][a_index] += lr * (r + next_v + b - self.Q[h][s][a_index])
                 self.V[h][s] = min(self.max_steps, np.max(self.Q[h][s]))
                 s = self.env.s
         return initial_points
@@ -266,3 +282,18 @@ class UCBQL(BaseQLearning):
         elif self.iota_type == 3:
             ret *= np.log(n_episodes)
         return np.log(ret)
+
+    def get_mu0(self):
+        if self.bonus == "hoeffding":
+            return None
+        else:
+            return {h: {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+                    for h in range(self.max_steps)}
+
+
+class UCBQLRM(UCBQL):
+    def __init__(self, env: BaseEnvironment, rm: BaseRewardMachine, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding",
+                 c=2, delta=0.05, random_reset=True, iota_type=1, c1=0.5, c2=0.5):
+        super().__init__(env=env, lr=lr, eps=eps, max_steps=max_steps, bonus=bonus, c=c, c1=c1, c2=c2, delta=delta,
+                         random_reset=random_reset, iota_type=iota_type)
+

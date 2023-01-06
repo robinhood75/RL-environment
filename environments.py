@@ -131,12 +131,12 @@ class RiverSwim(BaseEnvironment):
 
 def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
     """Make sure that env has been reset before"""
-    raise NotImplementedError
     assert env.rewards == []
     cp = deepcopy(env)
     cp.states = [(s, u) for s in env.states for u in rm.states]
+    cp.states_indices = {s: i for i, s in enumerate(cp.states)}
 
-    transition_p = [{a: np.zeros(cp.n_states) for a in cp.actions[s[0]]}
+    transition_p = [{a: np.zeros(cp.n_states) for a in env.actions[s[0]]}
                     for s in cp.states]
     for i, s in enumerate(cp.states):
         for a in env.actions[s[0]]:
@@ -144,7 +144,7 @@ def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
                 rm.u = s[1]
                 _, new_u = rm.step(new_s[0])
                 if new_s[1] == new_u:
-                    cp.transition_p[i][a][j] = env.transition_p[s[0]][a][i]
+                    transition_p[i][a][j] = env.transition_p[env.states_indices[s[0]]][a][env.states_indices[new_s[0]]]
     cp.transition_p = transition_p
 
     return cp
