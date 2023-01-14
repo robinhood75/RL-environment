@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 
 from model_based_algorithms import *
@@ -82,6 +83,10 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
         plt.title(title)
     plt.savefig(save_to)
     plt.show()
+    plt.plot(range(t), regrets)
+    if title is not None:
+        plt.title(title)
+    plt.show()
 
 
 def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_runs=3, algo="oql", save_to="fig.svg"):
@@ -124,8 +129,10 @@ def get_env_1():
 
     # Get Sadegh's transition probabilities
     env_.transition_p[1][1] = [0.05, 0.6, 0.35]
-    env_.transition_p[2][-1] = [0, 0.6, 0.4]
+    env_.transition_p[2][1] = [0, 0.6, 0.4]
+    env_.transition_p[2][-1] = [1, 0, 0]
     env_.transition_p[1][-1] = [1., 0, 0]
+
     return env_
 
 
@@ -137,6 +144,7 @@ if __name__ == '__main__':
     # env = RiverSwim(rm, n=n, p=0.9)
 
     env = get_env_1()
+    print(env.transition_p)
 
     dp = ValueDynamicProgramming(env=env, h=h+1)
     v_fn = dp.run(); print(v_fn)
@@ -144,13 +152,13 @@ if __name__ == '__main__':
 
     dp = [v_fn[k][0] for k in v_fn.keys()]
 
-    plot_regret(t=int(5e5),
+    plot_regret(t=int(3e7),
                 env_=env,
                 s0=None,
                 opt_gain=None,
-                n_runs=50,
-                algo="ucbql-b",
+                n_runs=1,
+                algo="ucbvi",
                 episode_length=h,
-                title="ucbql bernstein",
+                title="ucbvi",
                 dp=dp)
 

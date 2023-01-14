@@ -202,7 +202,7 @@ class OQLRM(OptimisticQLearning):
 
 class UCBQL(BaseQLearning):
     def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=2, delta=0.05,
-                 random_reset=True, iota_type=2, c1=0.5, c2=0.5):
+                 random_reset=True, iota_type=1, c1=0.5, c2=0.5):
         super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
         assert bonus in ["hoeffding", "bernstein"]
         self.random_reset = random_reset

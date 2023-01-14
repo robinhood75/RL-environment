@@ -104,14 +104,17 @@ class GridWorld(BaseEnvironment):
 
 
 class RiverSwim(BaseEnvironment):
-    def __init__(self, rm, n, p=0.8):
+    def __init__(self, rm, n, p=0.8, edge_actions=True):
         super().__init__(rm=rm)
         self.p = p
         self.states = range(n)
         self.states_indices = range(n)
         self.base_actions = [-1, 1]
-        self.actions = [[a for a in self.base_actions if 0 <= a + s < n]
-                        for s in self.states]
+        if edge_actions:
+            self.actions = [[a for a in self.base_actions] for _ in self.states]
+        else:
+            self.actions = [[a for a in self.base_actions if 0 <= a + s < n]
+                            for s in self.states]
         self.transition_p = self.get_transition_p()
 
     def start(self, s0=0):
@@ -124,8 +127,13 @@ class RiverSwim(BaseEnvironment):
             actions = self.actions[s]
             next_states = [a + s for a in actions]
             for i, a in enumerate(actions):
-                transition_p[s][a][next_states[i]] = self.p
-                transition_p[s][a][s] = 1 - self.p
+                if next_states[i] == -1:
+                    transition_p[s][a][0] = 1
+                elif next_states[i] == len(self.states):
+                    transition_p[s][a][-1] = 1
+                else:
+                    transition_p[s][a][next_states[i]] = self.p
+                    transition_p[s][a][s] = 1 - self.p
         return transition_p
 
 
