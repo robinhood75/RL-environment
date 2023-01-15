@@ -96,7 +96,8 @@ class ValueDynamicProgramming:
         #     v[s][-1] = env.rm.step(s, perform_transition=False)[0]
         return v
 
-    def run(self):
+    def run(self, pi=None):
+        """pi[s] = a_index"""
         for h in np.flip(np.arange(self.h - 1)):
             for s in self.env.states:
                 self.env.s = s
@@ -107,7 +108,10 @@ class ValueDynamicProgramming:
                          np.array([self.v_fn[x][h + 1] + rewards[a_index][x_index]
                                    for x_index, x in enumerate(self.env.states)])
                          for a_index, a in enumerate(actions)]
-                self.v_fn[s][h] = np.max(exp_r)
+                if pi is None:
+                    self.v_fn[s][h] = np.max(exp_r)
+                else:
+                    self.v_fn[s][h] = exp_r[pi[h][s]]
         return self.v_fn
 
 

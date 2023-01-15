@@ -202,7 +202,7 @@ class OQLRM(OptimisticQLearning):
 
 class UCBQL(BaseQLearning):
     def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=2, delta=0.05,
-                 random_reset=True, iota_type=1, c1=0.5, c2=0.5):
+                 random_reset=True, iota_type=3, c1=0.5, c2=0.5):
         super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
         assert bonus in ["hoeffding", "bernstein"]
         self.random_reset = random_reset
@@ -239,6 +239,7 @@ class UCBQL(BaseQLearning):
         if self.iota_type in [1, 3]:
             iota = self.get_iota(n_episodes)
         initial_points = []
+        pis = []
         k = 0
         while k * self.max_steps < n_episodes:
             k += 1
@@ -273,7 +274,8 @@ class UCBQL(BaseQLearning):
                 self.Q[h][s][a_index] += lr * (r + next_v + b - self.Q[h][s][a_index])
                 self.V[h][s] = min(self.max_steps, np.max(self.Q[h][s]))
                 s = self.env.s
-        return initial_points
+            pis.append(copy([{s: np.argmax(self.Q[h][s]) for s in self.env.states} for h in range(self.max_steps)]))
+        return initial_points, pis
 
     def get_iota(self, n_episodes):
         ret = self.env.n_states * self.env.n_actions / self.delta
