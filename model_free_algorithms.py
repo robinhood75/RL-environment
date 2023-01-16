@@ -294,8 +294,90 @@ class UCBQL(BaseQLearning):
 
 
 class UCBQLRM(UCBQL):
-    def __init__(self, env: BaseEnvironment, rm: BaseRewardMachine, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding",
-                 c=2, delta=0.05, random_reset=True, iota_type=1, c1=0.5, c2=0.5):
+    def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding",
+                 c=2, delta=0.05, random_reset=True, iota_type=3, c1=0.5, c2=0.5):
+        self.rm = env.rm
         super().__init__(env=env, lr=lr, eps=eps, max_steps=max_steps, bonus=bonus, c=c, c1=c1, c2=c2, delta=delta,
                          random_reset=random_reset, iota_type=iota_type)
+
+    def get_q0(self):
+        return {u:
+                {h:
+                    {s: self.max_steps * np.ones(len(self.env.actions[self.env.states_indices[s]]))
+                     for s in self.env.states}
+                 for h in range(self.max_steps)}
+                for u in self.rm.states}
+
+    def get_v0(self):
+        return {u:
+                {h: {s: 0 for s in self.env.states} for h in range(self.max_steps)}
+                for u in self.rm.states}
+
+    def get_mu0(self):
+        if self.bonus == "hoeffding":
+            return None
+        else:
+            return {u: {h: {s: np.zeros(len(self.env.actions[self.env.states_indices[s]])) for s in self.env.states}
+                    for h in range(self.max_steps)} for u in self.rm.states}
+
+    def _get_action_rm(self, u, h, s):
+        assert self.env.actions[self.env.states_indices[s]] != []
+        return np.argmax(self.Q[u][h][s])
+
+    def run(self, s0, n_episodes):
+        # TODO: change "n_episodes"'s name
+        if self.iota_type in [1, 3]:
+            iota = self.get_iota(n_episodes)
+        initial_points = []
+        pis = []
+        k = 0
+
+        while k * self.max_steps < n_episodes:
+            k += 1
+            if self.random_reset:
+                u = self.rm.states[np.random.randint(self.rm.n_states)]
+                s = self.env.states[np.random.randint(self.env.n_states)]
+            else:
+                s, u = s0
+            initial_points.append(copy((s, u)))
+            self.env.reset(s, reset_rewards=False)
+            self.rm.u = u
+
+            for h in range(self.max_steps):
+                a_index = self._get_action_rm(u, h, s)
+                _, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index])
+                new_u = copy(self.rm.u)
+                self.n[h][s][a_index] += 1
+                t = self.n[h][s][a_index]
+                lr = (self.max_steps + 1) / (self.max_steps + t)
+                if self.iota_type == 2:
+                    iota = np.log(self.env.n_states * self.env.n_actions * np.sqrt(t) / self.delta)
+                if self.bonus == "hoeffding":
+                    b = self.c * np.sqrt(self.max_steps**3 * iota / t)
+                elif self.bonus == "bernstein":
+                    next_v = self.V[self.rm.u][h + 1][new_s] if h < self.max_steps - 1 else 0
+                    self.mu[u][h][s][a_index] += next_v
+                    self.sigma[u][h][s][a_index] += next_v ** 2
+                    new_beta = min(
+                        self.c1 * (np.sqrt(self.max_steps / t * (((self.sigma[u][h][s][a_index] - self.mu[u][h][s][a_index])**2 / t) + self.max_steps) * iota) + np.sqrt(self.max_steps ** 7 * self.env.n_actions * self.env.n_states) * iota / t),
+                        self.c2 * np.sqrt(self.max_steps ** 3 * iota / t)
+                    )
+                    b = (new_beta - (1 - lr) * self.beta[u][h][s][a_index]) / (2 * lr)
+                    self.beta[u][h][s][a_index] = new_beta
+                else:
+                    raise ValueError(f"Unknown bonus {self.bonus}")
+
+                for u_ in self.rm.states:
+                    self.rm.u = u_
+                    r, new_u_ = self.rm.step(new_s, perform_transition=False)
+                    next_v = self.V[new_u_][h + 1][new_s] if h < self.max_steps - 1 else 0
+                    self.Q[u][h][s][a_index] += lr * (r + next_v + b - self.Q[u][h][s][a_index])
+                    self.V[u][h][s] = min(self.max_steps, np.max(self.Q[u][h][s]))
+
+                s = self.env.s
+                self.rm.u = new_u
+
+            pis.append(copy([{(s, u_): np.argmax(self.Q[u_][h][s]) for s in self.env.states for u_ in self.rm.states}
+                             for h in range(self.max_steps)]))
+        return initial_points, pis
 

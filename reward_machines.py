@@ -24,16 +24,17 @@ class BaseRewardMachine:
 
 
 class RiverSwimPatrol(BaseRewardMachine):
-    def __init__(self, u0, n_states_mdp):
+    def __init__(self, u0, n_states_mdp, two_rewards=True):
         super().__init__(u0)
         self.n_states_mdp = n_states_mdp
         self.states = ['LR', 'RL']
+        self.two_rewards = two_rewards
 
     def step(self, s, perform_transition=True, state=None):
         if s == 0 and self.u == 'RL':
             new_u = 'LR'
             r = 1
-        elif s == self.n_states_mdp - 1 and self.u == 'LR':
+        elif s == self.n_states_mdp - 1 and self.u == 'LR' and not self.two_rewards:
             new_u = 'RL'
             r = 1
         else:
@@ -74,4 +75,3 @@ class OneStateRMTD(BaseRewardMachine):
         else:
             r = 0
         return r, None
-

@@ -143,6 +143,7 @@ def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
     cp = deepcopy(env)
     cp.states = [(s, u) for s in env.states for u in rm.states]
     cp.states_indices = {s: i for i, s in enumerate(cp.states)}
+    cp.actions = [env.actions[env.states_indices[s[0]]] for s in cp.states]
 
     transition_p = [{a: np.zeros(cp.n_states) for a in env.actions[s[0]]}
                     for s in cp.states]
@@ -154,6 +155,18 @@ def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
                 if new_s[1] == new_u:
                     transition_p[i][a][j] = env.transition_p[env.states_indices[s[0]]][a][env.states_indices[new_s[0]]]
     cp.transition_p = transition_p
+
+    def new_step_fn(action, perform_action=True, new_state=None):
+        if new_state is None:
+            new_state = cp.get_next_state(action)
+        reward = cp.rm.step(new_state[0], perform_transition=perform_action)[0]
+        if perform_action:
+            cp.s = new_state
+            cp.trajectory.append(new_state)
+            cp.rewards.append(reward)
+        return reward, new_state
+
+    cp.step = new_step_fn
 
     return cp
 
