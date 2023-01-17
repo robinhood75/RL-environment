@@ -1,6 +1,7 @@
 import numpy as np
 from reward_machines import BaseRewardMachine
 from copy import deepcopy
+import types
 
 
 class BaseEnvironment:
@@ -48,10 +49,7 @@ class BaseEnvironment:
     def step(self, action, perform_action=True, new_state=None):
         if new_state is None:
             new_state = self.get_next_state(action)
-        if self.rm.is_reward_td:
-            reward = self.rm.step(new_state, perform_transition=perform_action, state=self.s)
-        else:
-            reward = self.rm.step(new_state, perform_transition=perform_action)[0]
+        reward = self.rm.step(self.s, new_state, perform_transition=perform_action)[0]
         if perform_action:
             self.s = new_state
             self.trajectory.append(new_state)
@@ -151,22 +149,24 @@ def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
         for a in env.actions[s[0]]:
             for j, new_s in enumerate(cp.states):
                 rm.u = s[1]
-                _, new_u = rm.step(new_s[0])
+                _, new_u = rm.step(s[0], new_s[0], perform_transition=False)
                 if new_s[1] == new_u:
                     transition_p[i][a][j] = env.transition_p[env.states_indices[s[0]]][a][env.states_indices[new_s[0]]]
     cp.transition_p = transition_p
 
-    def new_step_fn(action, perform_action=True, new_state=None):
+    def new_step_fn(self, action, perform_action=True, new_state=None):
         if new_state is None:
-            new_state = cp.get_next_state(action)
-        reward = cp.rm.step(new_state[0], perform_transition=perform_action)[0]
+            new_state = self.get_next_state(action)
+        self.rm.u = self.s[1]
+        reward = self.rm.step(self.s[0], new_state[0], perform_transition=perform_action)[0]
         if perform_action:
-            cp.s = new_state
-            cp.trajectory.append(new_state)
-            cp.rewards.append(reward)
+            self.s = new_state
+            self.trajectory.append(new_state)
+            self.rewards.append(reward)
         return reward, new_state
 
-    cp.step = new_step_fn
+    functype = types.MethodType
+    cp.step = functype(new_step_fn, cp)
 
     return cp
 

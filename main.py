@@ -72,10 +72,10 @@ def _get_regret_finite_h(v_star, pis, initial_points, env_copy: BaseEnvironment,
 
 
 def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fig.svg", episode_length=None,
-                title=None, opt_gain=None, dp=None, regret_per_episode=True):
+                title=None, opt_gain=None, dp=None, regret_per_episode=True, has_rm_=False):
     regrets = []
     env_copy = deepcopy(env_)
-    if not isinstance(env_.rm, OneStateRM) and False:
+    if has_rm_:
         env_copy = get_cross_product(env_copy, env_copy.rm)
 
     for run_nb in range(n_runs):
@@ -156,52 +156,88 @@ def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_r
     plt.show()
 
 
-def get_env_1():
-    rewards_dict_ = {0: 0.05, 2: 1}
-    rm_ = OneStateRM(rewards_dict=rewards_dict_)
-    env_ = RiverSwim(rm_, n=3, p=0.4)
+def has_rm(algo_, env_name_):
+    return env_name_ == "patrol" and algo_.startswith("ucbql-rm")
 
-    # Get Sadegh's transition probabilities
-    env_.transition_p[1][1] = [0.05, 0.6, 0.35]
-    env_.transition_p[2][1] = [0, 0.6, 0.4]
-    env_.transition_p[2][-1] = [1, 0, 0]
-    env_.transition_p[1][-1] = [1., 0, 0]
+
+def get_env_1(n_):
+    rewards_dict_ = {0: 0.1/n_, n_-1: 1}
+    rm_ = OneStateRM(rewards_dict=rewards_dict_)
+    env_ = RiverSwim(rm_, n=n_, p=0.6)
+
+    for k in range(1, n_-1):
+        env_.transition_p[k][1] = np.zeros(n_)
+        env_.transition_p[k][1][k] = 0.6
+        env_.transition_p[k][1][k+1] = 0.35
+        env_.transition_p[k][1][k-1] = 0.05
+
+        env_.transition_p[k][-1] = np.zeros(n_)
+        env_.transition_p[k][-1][k-1] = 1
+
+    env_.transition_p[-1][-1] = np.zeros(n_)
+    env_.transition_p[-1][-1][-2] = 1
+
+    env_.transition_p[-1][1] = np.zeros(n_)
+    env_.transition_p[-1][1][-1] = 0.6
+    env_.transition_p[-1][1][-2] = 0.4
 
     return env_
 
 
-def get_env_patrol():
-    rm_ = RiverSwimPatrol(u0='LR', n_states_mdp=3, two_rewards=False)
-    env_ = RiverSwim(rm_, n=3, p=0.4)
-    env_.transition_p[1][1] = [0.05, 0.6, 0.35]
-    env_.transition_p[2][1] = [0, 0.6, 0.4]
-    env_.transition_p[2][-1] = [1, 0, 0]
-    env_.transition_p[1][-1] = [1., 0, 0]
+def get_env_patrol(n_, cross_product_=False):
+    rm_ = RiverSwimPatrol(u0='LR', n_states_mdp=n_, two_rewards=False)
+    env_ = RiverSwim(rm_, n=n_, p=0.6)
+    env_.transition_p = get_env_1(n_).transition_p
+    if cross_product_:
+        env_ = get_cross_product(env_, env_.rm)
+    return env_
+
+
+def get_env(env_name_, n_=3, cross_product_=False):
+    if env_name_ == "vanilla":
+        env_ = get_env_1(n_)
+    elif env_name_ == "patrol":
+        env_ = get_env_patrol(n_, cross_product_=cross_product_)
+    else:
+        raise ValueError(f"Unknown env {env_name_}")
     return env_
 
 
 if __name__ == '__main__':
     h = 6
-    env = get_env_patrol()
-    env = get_cross_product(env, env.rm)
+    n = 3
+    t = 5e4
+    algo = "ucbql-rm-h"
+    n_runs = 1
+    env_name = "patrol"
+    plot_title = "UCB-QL-RM (Hoeffding), bonus 3"
 
-    if True or isinstance(env.rm, OneStateRM):
-        dp = ValueDynamicProgramming(env=env, h=h+1)
-    else:
+    ################################## DON'T MODIFY BELOW ##################################
+    has_rm_ = has_rm(algo, env_name)
+    env = get_env(env_name, n, cross_product_=(env_name == "patrol" and not algo.startswith("ucbql-rm")))
+
+    if has_rm_:
         dp = ValueDynamicProgramming(env=get_cross_product(env, env.rm), h=h+1)
+    else:
+        dp = ValueDynamicProgramming(env=env, h=h + 1)
     v_fn = dp.run()
-    opt_gain = v_fn[(0, 'LR')][0] / h
-
     dp = [v_fn[k][0] for k in v_fn.keys()]
 
-    plot_regret(t=int(5e5),
+    if has_rm_:
+        print("States of the CP:", get_cross_product(env, env.rm).states)
+    else:
+        print("States:", env.states)
+    print("V*_1:", dp)
+
+    plot_regret(t=int(t),
                 env_=env,
                 s0=None,
                 opt_gain=None,
-                n_runs=10,
-                algo="ucbql-h",
+                n_runs=1,
+                algo=algo,
                 episode_length=h,
-                title="UCB-QL-RM (Hoeffding), bonus 3",
+                title=plot_title,
                 dp=dp,
-                regret_per_episode=True)
+                regret_per_episode=True,
+                has_rm_=has_rm_)
 

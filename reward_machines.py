@@ -6,12 +6,11 @@ class BaseRewardMachine:
         self.states = None
         self.u = u0
         self.u0 = u0
-        self.is_reward_td = False
 
     def reset(self):
         self.u = self.u0
 
-    def step(self, s, perform_transition=True, state=None):
+    def step(self, s, next_s, perform_transition=True):
         """
         Transition to new state of RM
         :return: reward, new state
@@ -30,13 +29,24 @@ class RiverSwimPatrol(BaseRewardMachine):
         self.states = ['LR', 'RL']
         self.two_rewards = two_rewards
 
-    def step(self, s, perform_transition=True, state=None):
-        if s == 0 and self.u == 'RL':
+    def step(self, s, next_s, perform_transition=True, state=None):
+        # TODO: simplify disjunction
+        if s == 1 and next_s == 0 and self.u == 'RL':
             new_u = 'LR'
             r = 1
-        elif s == self.n_states_mdp - 1 and self.u == 'LR' and not self.two_rewards:
+        elif s == self.n_states_mdp - 2 and next_s == self.n_states_mdp - 1 and self.u == 'LR':
+            if self.two_rewards:
+                new_u = 'RL'
+                r = 1
+            else:
+                new_u = 'RL'
+                r = 0
+        elif s == 0 and self.u == 'RL':
+            new_u = 'LR'
+            r = 0
+        elif s == self.n_states_mdp - 1 and self.u == 'LR':
             new_u = 'RL'
-            r = 1
+            r = 0
         else:
             new_u = self.u
             r = 0
@@ -52,26 +62,10 @@ class OneStateRM(BaseRewardMachine):
         self.states = list(rewards_dict.keys())
         self.rewards_dict = rewards_dict
 
-    def step(self, s, perform_transition=True, state=None):
-        if s in self.rewards_dict.keys():
-            r = self.rewards_dict[s]
+    def step(self, s, next_s, perform_transition=True, state=None):
+        if next_s in self.rewards_dict.keys():
+            r = self.rewards_dict[next_s]
         else:
             r = 0
         return r, None
 
-
-class OneStateRMTD(BaseRewardMachine):
-    """transition-dependent"""
-    def __init__(self, rewards_dict, u0=None):
-        super().__init__(u0=u0)
-        self.is_reward_td = True
-        self.states = np.unique(np.array(list(rewards_dict.keys())).flatten())
-        self.rewards_dict = rewards_dict
-
-    def step(self, s, perform_transition=True, state=None):
-        assert state is not None
-        if (s, state) in self.rewards_dict.keys():
-            r = self.rewards_dict[(s, state)]
-        else:
-            r = 0
-        return r, None

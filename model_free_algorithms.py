@@ -92,7 +92,7 @@ class QRM(BaseQLearning):
                 new_s = self.env.get_next_state(self.env.actions[s_index][a_index])
                 for v in self.env.rm.states:
                     self.env.rm.u = v
-                    r, new_v = self.env.rm.step(new_s, perform_transition=False)
+                    r, new_v = self.env.rm.step(s, new_s, perform_transition=False)
                     q_new = np.max(self.Q[new_v][new_s]) if not self.env.is_terminal(new_s) else 0
                     self.Q[v][s][a_index] += self.lr * (r + self.gamma * q_new - self.Q[v][s][a_index])
                 self.env.s = new_s
@@ -192,7 +192,7 @@ class OQLRM(OptimisticQLearning):
 
             for u in self.env.rm.states:
                 self.env.rm.u = u
-                r, new_u = self.env.rm.step(new_s, perform_transition=False)
+                r, new_u = self.env.rm.step(s, new_s, perform_transition=False)
                 self.Q[u][s][a_index] += lr * (r + self.gamma * self.V[u][new_s] + bias - self.Q[u][s][a_index])
                 self.Q_est[u][s][a_index] = np.min([self.Q_est[u][s][a_index], self.Q[u][s][a_index]])
                 self.V[u][s] = np.max(self.Q_est[u][s])
@@ -345,8 +345,9 @@ class UCBQLRM(UCBQL):
 
             for h in range(self.max_steps):
                 a_index = self._get_action_rm(u, h, s)
-                _, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index])
+                r_tmp, new_s = self.env.step(self.env.actions[self.env.states_indices[s]][a_index])
                 new_u = copy(self.rm.u)
+                # print(f"H={h}, (s, u): {s, u}, (s', u'): {new_s, new_u}, r = {r_tmp}")
                 self.n[h][s][a_index] += 1
                 t = self.n[h][s][a_index]
                 lr = (self.max_steps + 1) / (self.max_steps + t)
@@ -369,15 +370,16 @@ class UCBQLRM(UCBQL):
 
                 for u_ in self.rm.states:
                     self.rm.u = u_
-                    r, new_u_ = self.rm.step(new_s, perform_transition=False)
+                    r, new_u_ = self.rm.step(s, new_s, perform_transition=False)
                     next_v = self.V[new_u_][h + 1][new_s] if h < self.max_steps - 1 else 0
-                    self.Q[u][h][s][a_index] += lr * (r + next_v + b - self.Q[u][h][s][a_index])
-                    self.V[u][h][s] = min(self.max_steps, np.max(self.Q[u][h][s]))
+                    self.Q[u_][h][s][a_index] += lr * (r + next_v + b - self.Q[u_][h][s][a_index])
+                    self.V[u_][h][s] = min(self.max_steps, np.max(self.Q[u_][h][s]))
 
-                s = self.env.s
+                s = copy(self.env.s)
+                u = new_u
                 self.rm.u = new_u
 
-            pis.append(copy([{(s, u_): np.argmax(self.Q[u_][h][s]) for s in self.env.states for u_ in self.rm.states}
+            pis.append(copy([{(s_, u_): np.argmax(self.Q[u_][h][s_]) for s_ in self.env.states for u_ in self.rm.states}
                              for h in range(self.max_steps)]))
         return initial_points, pis
 
