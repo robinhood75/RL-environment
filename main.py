@@ -1,7 +1,4 @@
 import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
-import numpy as np
 
 from model_based_algorithms import *
 from model_free_algorithms import *
@@ -9,23 +6,18 @@ from reward_machines import *
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--task', type=str, help="Plotting regret is the only implemented task for now",
-                    default="plot_regret")
-parser.add_argument('--env', type=str, help="Chosen environment: either gridworld or riverswim", default="riverswim")
-parser.add_argument('--n_states', type=int, help="Number of states. For gridworld, specify the square of an integer",
-                    default=6)
-parser.add_argument('--rm', type=str, help="Chosen reward machine: either one_state or patrol", default="one_state")
-parser.add_argument('--target', help="Target if the reward is 0 everywhere except at a given target state",
-                    default=None)
-parser.add_argument('--algo', type=str, help="Either oql or oqlrm", default="oqlrm")
-parser.add_argument('--n_runs', type=int, help="Number of runs to average on", default=3)
-parser.add_argument('--verbose', type=bool, default=True)
+parser.add_argument('--env_names', nargs="*",
+                    help="list of env names, where env_name is either vanilla or patrol",
+                    required=True)
+parser.add_argument('--algo_names', nargs="*",
+                    help="list of algo names, where algo is ucbql-h, ucbql-rm-b, etc.",
+                    required=True)
+parser.add_argument('--n_states', type=int, help="Number of states", default=3)
+parser.add_argument('--episode_length', type=int, help="H", default=6)
+parser.add_argument('--max_t', type=int, help="Time horizon", default=100000)
+parser.add_argument('--n_runs', type=int, help="Number of runs to average on", default=10)
+parser.add_argument('--title', type=str, help="Plot title", default="Regret")
 args = parser.parse_args()
-
-if args.task == 'plot_regret':
-    pass
-else:
-    raise ValueError(f"Unknown task {args.task}")
 
 
 def _get_algo(algo: str, env_, t, c=1., max_steps=20):
@@ -106,9 +98,10 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
     std, mean = np.std(regrets, axis=0), np.mean(regrets, axis=0)
     ci = 1.96 * std / np.sqrt(regrets.shape[0])
     times = range(regrets.shape[1])
-    for x_scale in ["log", "linear"]:
+    for i, x_scale in enumerate(["log", "linear"]):
+        plt.figure(i+1)
         plt.fill_between(times, mean - ci, mean + ci, color='lightblue')
-        plt.plot(times, regrets.mean(axis=0), color='blue')
+        plt.plot(times, regrets.mean(axis=0), label=algo)
         if title is not None:
             plt.title(title)
         plt.xscale(x_scale)
@@ -117,11 +110,6 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
         else:
             plt.xlabel("t")
         plt.ylabel("Regret")
-
-        if save_to:
-            plt.savefig(x_scale + "_" + save_to)
-
-        plt.show()
 
 
 def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_runs=3, algo="oql", save_to="fig.svg"):
@@ -204,40 +192,45 @@ def get_env(env_name_, n_=3, cross_product_=False):
 
 
 if __name__ == '__main__':
-    h = 6
-    n = 3
-    t = 5e4
-    algo = "ucbql-rm-h"
-    n_runs = 1
-    env_name = "patrol"
-    plot_title = "UCB-QL-RM (Hoeffding), bonus 3"
+    h = args.episode_length
+    n = args.n_states
+    t = args.max_t
+    env_names = args.env_names
+    algo_names = args.algo_names
+    n_runs = args.n_runs
+    plot_title = args.title
 
-    ################################## DON'T MODIFY BELOW ##################################
-    has_rm_ = has_rm(algo, env_name)
-    env = get_env(env_name, n, cross_product_=(env_name == "patrol" and not algo.startswith("ucbql-rm")))
+    for algo, env_name in zip(algo_names, env_names):
+        print(f"Algorithm: {algo}, environment: {env_name}")
+        has_rm_ = has_rm(algo, env_name)
+        env = get_env(env_name, n, cross_product_=(env_name == "patrol" and not algo.startswith("ucbql-rm")))
 
-    if has_rm_:
-        dp = ValueDynamicProgramming(env=get_cross_product(env, env.rm), h=h+1)
-    else:
-        dp = ValueDynamicProgramming(env=env, h=h + 1)
-    v_fn = dp.run()
-    dp = [v_fn[k][0] for k in v_fn.keys()]
+        if has_rm_:
+            dp = ValueDynamicProgramming(env=get_cross_product(env, env.rm), h=h+1)
+        else:
+            dp = ValueDynamicProgramming(env=env, h=h + 1)
+        v_fn = dp.run()
+        dp = [v_fn[k][0] for k in v_fn.keys()]
 
-    if has_rm_:
-        print("States of the CP:", get_cross_product(env, env.rm).states)
-    else:
-        print("States:", env.states)
-    print("V*_1:", dp)
+        if has_rm_:
+            print("States of the CP:", get_cross_product(env, env.rm).states)
+        else:
+            print("States:", env.states)
+        print("V*_1:", dp)
 
-    plot_regret(t=int(t),
-                env_=env,
-                s0=None,
-                opt_gain=None,
-                n_runs=1,
-                algo=algo,
-                episode_length=h,
-                title=plot_title,
-                dp=dp,
-                regret_per_episode=True,
-                has_rm_=has_rm_)
+        plot_regret(t=int(t),
+                    env_=env,
+                    s0=None,
+                    opt_gain=None,
+                    n_runs=n_runs,
+                    algo=algo,
+                    episode_length=h,
+                    title=plot_title,
+                    dp=dp,
+                    regret_per_episode=True,
+                    has_rm_=has_rm_)
+    for i in [1, 2]:
+        plt.figure(i)
+        plt.legend()
+    plt.show()
 
