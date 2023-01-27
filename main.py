@@ -26,14 +26,21 @@ def _get_algo(algo: str, env_, t, c=1., max_steps=20):
         cls = OptimisticQLearning(env=env_, t=t, c=c)
     elif algo == "oqlrm":
         cls = OQLRM(env=env_, t=t, c=c)
-    elif algo == "ucbql-h":
-        cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="hoeffding")
-    elif algo == "ucbql-b":
-        cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="bernstein")
-    elif algo == "ucbql-rm-h":
-        cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="hoeffding")
-    elif algo == "ucbql-rm-b":
-        cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="bernstein")
+    elif algo.startswith("ucbql"):
+        try:
+            iota_type = int(algo[-1])
+        except ValueError:
+            iota_type = 3
+        if algo.startswith("ucbql-h"):
+            cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="hoeffding", iota_type=iota_type)
+        elif algo.startswith("ucbql-b"):
+            cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="bernstein", iota_type=iota_type)
+        elif algo.startswith("ucbql-rm-h"):
+            cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="hoeffding", iota_type=iota_type)
+        elif algo.startswith("ucbql-rm-b"):
+            cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="bernstein", iota_type=iota_type)
+        else:
+            raise ValueError(f"Unknown algorithm {algo}")
     elif algo == "ucrl2":
         cls = UCRL2(env=env_, delta=0.05)
     elif algo == "ucbvi":
