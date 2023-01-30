@@ -12,6 +12,7 @@ parser.add_argument('--env_names', nargs="*",
 parser.add_argument('--algo_names', nargs="*",
                     help="list of algo names, where algo is ucbql-h, ucbql-rm-b, etc.",
                     required=True)
+parser.add_argument('--reward_shaping', nargs="*", help="None, k, or float (scaling)", default=None)
 parser.add_argument('--n_states', type=int, help="Number of states", default=3)
 parser.add_argument('--episode_length', type=int, help="H", default=6)
 parser.add_argument('--max_t', type=int, help="Time horizon", default=100000)
@@ -20,20 +21,27 @@ parser.add_argument('--title', type=str, help="Plot title", default="Regret")
 args = parser.parse_args()
 
 
-def _get_algo(algo: str, env_, t, c=1., max_steps=20):
+def _get_algo(algo: str, env_, t, c=1., max_steps=20, _reward_shaping=None):
     # TODO: make a proper factory
     if algo == "oql":
         cls = OptimisticQLearning(env=env_, t=t, c=c)
     elif algo == "oqlrm":
         cls = OQLRM(env=env_, t=t, c=c)
-    elif algo == "ucbql-h":
-        cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="hoeffding")
-    elif algo == "ucbql-b":
-        cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="bernstein")
-    elif algo == "ucbql-rm-h":
-        cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="hoeffding")
-    elif algo == "ucbql-rm-b":
-        cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="bernstein")
+    elif algo.startswith("ucbql"):
+        try:
+            iota_type = int(algo[-1])
+        except ValueError:
+            iota_type = 3
+        if algo.startswith("ucbql-h"):
+            cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="hoeffding", iota_type=iota_type)
+        elif algo.startswith("ucbql-b"):
+            cls = UCBQL(env=env_, max_steps=max_steps, c=c, bonus="bernstein", iota_type=iota_type)
+        elif algo.startswith("ucbql-rm-h"):
+            cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="hoeffding", iota_type=iota_type, reward_shaping=_reward_shaping)
+        elif algo.startswith("ucbql-rm-b"):
+            cls = UCBQLRM(env=env_, max_steps=max_steps, c=c, bonus="bernstein", iota_type=iota_type, reward_shaping=_reward_shaping)
+        else:
+            raise ValueError(f"Unknown algorithm {algo}")
     elif algo == "ucrl2":
         cls = UCRL2(env=env_, delta=0.05)
     elif algo == "ucbvi":
@@ -64,7 +72,7 @@ def _get_regret_finite_h(v_star, pis, initial_points, env_copy: BaseEnvironment,
 
 
 def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fig.svg", episode_length=None,
-                title=None, opt_gain=None, dp=None, regret_per_episode=True, has_rm_=False):
+                title=None, opt_gain=None, dp=None, regret_per_episode=True, has_rm_=False, _reward_shaping=None):
     regrets = []
     env_copy = deepcopy(env_)
     if has_rm_:
@@ -73,7 +81,7 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
     for run_nb in range(n_runs):
         print(f"Run {run_nb+1}/{n_runs}")
         env_.reset(s0=s0, reset_rewards=True)
-        oql = _get_algo(algo=algo, env_=env_, t=t, c=0.1, max_steps=episode_length)
+        oql = _get_algo(algo=algo, env_=env_, t=t, c=0.1, max_steps=episode_length, _reward_shaping=_reward_shaping)
         if algo.startswith("ucbql"):
             initial_points, pis = oql.run(s0=s0, n_episodes=t)
         else:
@@ -87,7 +95,7 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
                 assert dp is not None and episode_length is not None
                 opt_gains = [g/episode_length for g in dp]
                 s0_counts = np.unique(initial_points, return_counts=True)[1]
-                s0_frequencies = s0_counts / s0_counts.sum(); print(s0_frequencies)
+                s0_frequencies = s0_counts / s0_counts.sum()
                 opt_gain_tmp = s0_frequencies @ opt_gains
             else:
                 opt_gain_tmp = opt_gain
@@ -101,6 +109,8 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
     for i, x_scale in enumerate(["log", "linear"]):
         plt.figure(i+1)
         plt.fill_between(times, mean - ci, mean + ci, color='lightblue')
+        if _reward_shaping is not None:
+            algo = f"Reward shaping {_reward_shaping.scaling}"
         plt.plot(times, regrets.mean(axis=0), label=algo)
         if title is not None:
             plt.title(title)
@@ -148,6 +158,11 @@ def has_rm(algo_, env_name_):
     return env_name_ == "patrol" and algo_.startswith("ucbql-rm")
 
 
+def get_v_opt_patrol(gamma_):
+    v = {'LR': gamma_ / (1 + gamma_), 'RL': 1 / (1 + gamma_)}
+    return v
+
+
 def get_env_1(n_):
     rewards_dict_ = {0: 0.1/n_, n_-1: 1}
     rm_ = OneStateRM(rewards_dict=rewards_dict_)
@@ -191,6 +206,25 @@ def get_env(env_name_, n_=3, cross_product_=False):
     return env_
 
 
+def get_rs_args(arg, nb):
+    if arg is None:
+        return [None] * nb
+    else:
+        assert len(arg) == nb
+        ret = []
+        for a in arg:
+            if a == 'None':
+                ret.append(None)
+            elif a == 'log':
+                ret.append(a)
+            else:
+                try:
+                    ret.append(float(a))
+                except ValueError:
+                    raise ValueError(f"Unknown argument {a}")
+    return ret
+
+
 if __name__ == '__main__':
     h = args.episode_length
     n = args.n_states
@@ -199,11 +233,18 @@ if __name__ == '__main__':
     algo_names = args.algo_names
     n_runs = args.n_runs
     plot_title = args.title
+    reward_shaping = get_rs_args(args.reward_shaping, len(algo_names))
 
-    for algo, env_name in zip(algo_names, env_names):
+    for algo, env_name, rs in zip(algo_names, env_names, reward_shaping):
         print(f"Algorithm: {algo}, environment: {env_name}")
         has_rm_ = has_rm(algo, env_name)
         env = get_env(env_name, n, cross_product_=(env_name == "patrol" and not algo.startswith("ucbql-rm")))
+
+        if rs is not None:
+            assert isinstance(env.rm, RiverSwimPatrol)
+            gamma_ = 1 - 1 / h
+            phi = get_v_opt_patrol(gamma_)
+            rs = RewardShaping(env.rm, phi, scaling=rs, gamma_=gamma_)
 
         if has_rm_:
             dp = ValueDynamicProgramming(env=get_cross_product(env, env.rm), h=h+1)
@@ -228,7 +269,8 @@ if __name__ == '__main__':
                     title=plot_title,
                     dp=dp,
                     regret_per_episode=True,
-                    has_rm_=has_rm_)
+                    has_rm_=has_rm_,
+                    _reward_shaping=rs)
     for i in [1, 2]:
         plt.figure(i)
         plt.legend()

@@ -202,7 +202,7 @@ class OQLRM(OptimisticQLearning):
 
 class UCBQL(BaseQLearning):
     def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding", c=2, delta=0.05,
-                 random_reset=True, iota_type=3, c1=0.5, c2=0.5):
+                 random_reset=True, iota_type=3, c1=0.5, c2=0.5, reward_shaping=None):
         super().__init__(env=env, gamma=1, lr=lr, eps=eps, max_steps=max_steps)
         assert bonus in ["hoeffding", "bernstein"]
         self.random_reset = random_reset
@@ -295,10 +295,12 @@ class UCBQL(BaseQLearning):
 
 class UCBQLRM(UCBQL):
     def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding",
-                 c=2, delta=0.05, random_reset=True, iota_type=3, c1=0.5, c2=0.5):
+                 c=2, delta=0.05, random_reset=True, iota_type=3, c1=0.5, c2=0.5,
+                 reward_shaping=None):
         self.rm = env.rm
         super().__init__(env=env, lr=lr, eps=eps, max_steps=max_steps, bonus=bonus, c=c, c1=c1, c2=c2, delta=delta,
                          random_reset=random_reset, iota_type=iota_type)
+        self.reward_shaping = reward_shaping
 
     def get_q0(self):
         return {u:
@@ -372,6 +374,9 @@ class UCBQLRM(UCBQL):
                     self.rm.u = u_
                     r, new_u_ = self.rm.step(s, new_s, perform_transition=False)
                     next_v = self.V[new_u_][h + 1][new_s] if h < self.max_steps - 1 else 0
+                    if self.reward_shaping is not None:
+                        rs_bonus = self.reward_shaping.get_bonus(u_, new_u_)
+                        b += rs_bonus
                     self.Q[u_][h][s][a_index] += lr * (r + next_v + b - self.Q[u_][h][s][a_index])
                     self.V[u_][h][s] = min(self.max_steps, np.max(self.Q[u_][h][s]))
 
@@ -379,6 +384,8 @@ class UCBQLRM(UCBQL):
                 u = new_u
                 self.rm.u = new_u
 
+            if self.reward_shaping is not None:
+                self.reward_shaping.step()
             pis.append(copy([{(s_, u_): np.argmax(self.Q[u_][h][s_]) for s_ in self.env.states for u_ in self.rm.states}
                              for h in range(self.max_steps)]))
         return initial_points, pis

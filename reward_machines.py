@@ -69,3 +69,32 @@ class OneStateRM(BaseRewardMachine):
             r = 0
         return r, None
 
+
+class RewardShaping:
+    def __init__(self, rm: BaseRewardMachine, phi=None, scaling=None, gamma_=0.9):
+        self.rm = rm
+        self.phi = self.get_potential(phi)
+        self.k = 1
+        self.scaling = scaling
+        self.gamma = gamma_
+
+    def get_potential(self, phi):
+        if phi is not None:
+            return phi
+        else:
+            raise ValueError
+
+    def get_bonus(self, u, new_u):
+        ret = self.gamma * self.phi[new_u] - self.phi[u]
+        if self.scaling is None:
+            pass
+        elif self.scaling == 'log':
+            ret /= np.log(self.k + 1)
+        elif isinstance(self.scaling, float):
+            ret *= self.scaling
+        else:
+            raise ValueError(f"Unknown scaling {self.scaling}")
+        return ret
+
+    def step(self):
+        self.k += 1
