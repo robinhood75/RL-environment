@@ -296,11 +296,12 @@ class UCBQL(BaseQLearning):
 class UCBQLRM(UCBQL):
     def __init__(self, env: BaseEnvironment, lr=0.1, eps=0.2, max_steps=100, bonus="hoeffding",
                  c=2, delta=0.05, random_reset=True, iota_type=3, c1=0.5, c2=0.5,
-                 reward_shaping=None):
+                 reward_shaping=None, resized_rs_reward=True):
         self.rm = env.rm
         super().__init__(env=env, lr=lr, eps=eps, max_steps=max_steps, bonus=bonus, c=c, c1=c1, c2=c2, delta=delta,
                          random_reset=random_reset, iota_type=iota_type)
         self.reward_shaping = reward_shaping
+        self.resized_rs_reward = resized_rs_reward
 
     def get_q0(self):
         return {u:
@@ -376,7 +377,9 @@ class UCBQLRM(UCBQL):
                     next_v = self.V[new_u_][h + 1][new_s] if h < self.max_steps - 1 else 0
                     if self.reward_shaping is not None:
                         rs_bonus = self.reward_shaping.get_bonus(u_, new_u_)
-                        b += rs_bonus
+                        r += rs_bonus
+                        if self.resized_rs_reward:
+                            r = (r - self.reward_shaping.min) / (self.reward_shaping.max - self.reward_shaping.min)
                     self.Q[u_][h][s][a_index] += lr * (r + next_v + b - self.Q[u_][h][s][a_index])
                     self.V[u_][h][s] = min(self.max_steps, np.max(self.Q[u_][h][s]))
 
