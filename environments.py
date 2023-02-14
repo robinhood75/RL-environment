@@ -61,7 +61,7 @@ class BaseEnvironment:
 
 
 class GridWorld(BaseEnvironment):
-    def __init__(self, rm, x_max, y_max, target, walls, p=0.8):
+    def __init__(self, rm, x_max, y_max, walls, p=0.9):
         """
         :param x_max: width of the grid
         :param y_max: length of the grid
@@ -80,8 +80,7 @@ class GridWorld(BaseEnvironment):
         self.actions = [[a for a in self.base_actions
                          if (np.array(a) + np.array(s) < np.array([x_max, y_max])).all()
                          and (np.array(a) + np.array(s) >= np.zeros(2)).all()
-                         and tuple((np.array(a) + np.array(s)).tolist()) not in walls
-                         and not s == target]
+                         and tuple((np.array(a) + np.array(s)).tolist()) not in walls]
                         for s in self.states]
         self.transition_p = self.get_transition_p()
 
@@ -143,10 +142,10 @@ def get_cross_product(env: BaseEnvironment, rm: BaseRewardMachine):
     cp.states_indices = {s: i for i, s in enumerate(cp.states)}
     cp.actions = [env.actions[env.states_indices[s[0]]] for s in cp.states]
 
-    transition_p = [{a: np.zeros(cp.n_states) for a in env.actions[s[0]]}
-                    for s in cp.states]
+    transition_p = [{a: np.zeros(cp.n_states) for a in cp.actions[i]}
+                    for i, s in enumerate(cp.states)]
     for i, s in enumerate(cp.states):
-        for a in env.actions[s[0]]:
+        for a in env.actions[env.states_indices[s[0]]]:
             for j, new_s in enumerate(cp.states):
                 rm.u = s[1]
                 _, new_u = rm.step(s[0], new_s[0], perform_transition=False)

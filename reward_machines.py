@@ -24,6 +24,41 @@ class BaseRewardMachine:
         return len(self.states)
 
 
+class GridWorldRM(BaseRewardMachine):
+    def __init__(self, u0, mdp_width, mdp_height):
+        super().__init__(u0)
+        self.n = mdp_width
+        self.m = mdp_height
+        self.states = ['coffee', 'mail', 'office']
+
+    def step(self, s, next_s, perform_transition=True):
+        r = 0
+        if self.u == 'coffee':
+            if next_s == (self.n - 1, 0):
+                r = 1
+                new_u = 'mail'
+            else:
+                new_u = self.u
+        elif self.u == 'mail':
+            if next_s == (self.n - 2, self.m - 1):
+                r = 1
+                new_u = 'office'
+            else:
+                new_u = self.u
+        else:
+            assert self.u == 'office'
+            if next_s == (0, 0):
+                r = 1
+                new_u = 'coffee'
+            else:
+                new_u = self.u
+
+        if perform_transition:
+            self.u = new_u
+
+        return r, new_u
+
+
 class RiverSwimPatrol(BaseRewardMachine):
     def __init__(self, u0, n_states_mdp, two_rewards=True):
         super().__init__(u0)
@@ -57,6 +92,7 @@ class RiverSwimPatrol(BaseRewardMachine):
         return r, new_u
 
 
+# Obsolete
 class FourStatesPatrol(BaseRewardMachine):
     def __init__(self, u0, n_states_mdp):
         super().__init__(u0)

@@ -162,7 +162,7 @@ def plot_regret_oql_multiple_t(t_array, env_: BaseEnvironment, s0, opt_gain, n_r
 
 
 def has_rm(algo_, env_name_):
-    return env_name_.startswith("patrol") and algo_.startswith("ucbql-rm")
+    return (env_name_.startswith("patrol") or env_name_ == "gridworld") and algo_.startswith("ucbql-rm")
 
 
 def get_v_opt_patrol(gamma_, n_cycles=2):
@@ -174,6 +174,10 @@ def get_v_opt_patrol(gamma_, n_cycles=2):
         den = 1 - gamma_ ** 2
         v = {'LR': gamma_ / den, 'RL': 1 / den}
     return v
+
+
+def get_v_opt_gridworld(gamma_, n_, m_):
+    return {k: 1 / (1 - gamma_) for k in ['coffee', 'mail', 'office']}
 
 
 def get_env_1(n_):
@@ -212,12 +216,23 @@ def get_env_patrol(n_, cross_product_=False, n_cycles=1):
     return env_
 
 
+def get_env_gridworld_rm(n_, m_, cross_product=False):
+    rm_ = GridWorldRM('coffee', n_, m_)
+    env_ = GridWorld(rm_, n_, m_, walls=[])
+    if cross_product:
+        env_ = get_cross_product(env_, env_.rm)
+    return env_
+
+
 def get_env(env_name_, n_=3, cross_product_=False):
     if env_name_ == "vanilla":
         env_ = get_env_1(n_)
     elif env_name_.startswith("patrol"):
         n_cycles = 1 if env_name_ == "patrol" else int(int(env_name_[6:]) / 2)
         env_ = get_env_patrol(n_, cross_product_=cross_product_, n_cycles=n_cycles)
+    elif env_name_ == "gridworld":
+        n_ = m_ = int(np.sqrt(n_)) + 1
+        env_ = get_env_gridworld_rm(n_, m_, cross_product=cross_product_)
     else:
         raise ValueError(f"Unknown env {env_name_}")
     return env_
@@ -272,13 +287,17 @@ if __name__ == '__main__':
     for algo, env_name, rs, resized_rs in zip(algo_names, env_names, reward_shaping, resized_rs_bonus):
         print(f"Algorithm: {algo}, environment: {env_name}")
         has_rm_ = has_rm(algo, env_name)
-        env = get_env(env_name, n, cross_product_=(env_name.startswith("patrol") and not algo.startswith("ucbql-rm")))
+        env = get_env(env_name, n, cross_product_=((env_name == "gridworld" or env_name.startswith("patrol"))
+                                                   and not algo.startswith("ucbql-rm")))
 
         if rs is not None:
-            assert isinstance(env.rm, RiverSwimPatrol) or isinstance(env.rm, LargePatrol)
-            assert env_name.startswith("patrol")
+            assert isinstance(env.rm, RiverSwimPatrol) or isinstance(env.rm, LargePatrol) or isinstance(env.rm, GridWorldRM)
+            assert env_name.startswith("patrol") or env_name == "gridworld"
             gamma_ = 1 - 1 / h
-            v_opt = get_v_opt_patrol(gamma_, n_cycles=1 if env_name == "patrol" else int(int(env_name[6:]) / 2))
+            if env_name.startswith("patrol"):
+                v_opt = get_v_opt_patrol(gamma_, n_cycles=1 if env_name == "patrol" else int(int(env_name[6:]) / 2))
+            else:
+                v_opt = get_v_opt_gridworld(gamma_, n, n)
             rs = RewardShaping(env.rm, v_opt=v_opt, scaling=rs, gamma_=gamma_, env=env)
 
         if has_rm_:
