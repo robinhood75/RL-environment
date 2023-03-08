@@ -176,52 +176,76 @@ class OneStateRM(BaseRewardMachine):
 
 
 class RewardShaping:
-    def __init__(self, rm: BaseRewardMachine, v_opt=None, scaling=None, gamma_=0.9, env=None):
+    def __init__(self, rm: BaseRewardMachine, v_opt=None, scaling=None, gamma_=0.9, env=None, resize=False, h=None):
         self.rm = rm
         self.scaling = scaling
+        self.env = env
+        self.h = h
+        self.count = None if env is None else {(s, h): 0 for s in env.states for h in range(self.h)}
+        if self.scaling == "s_dependent":
+            assert env is not None
+            assert h is not None
         self.phi0 = self.get_potential(v_opt)
         self.phi = copy.copy(self.phi0)
         self.k = 1
         self.gamma = gamma_
-        self.env = env
-        self.min, self.max = self.resized_phi(self.env, self.phi, self.gamma)
+        self.resize = resize
+        self.min, self.max = self.resized_phi(self.env, self.phi, self.gamma, self.scaling)
 
     def get_potential(self, v_opt):
         if v_opt is not None:
             if isinstance(self.scaling, float):
-                return {k: self.scaling * v for k, v in v_opt.items()}
+                ret = {k: self.scaling * v for k, v in v_opt.items()}
+            elif self.scaling == 's_dependent':
+                assert self.env is not None
+                ret = {(s, h): {u: v for u, v in v_opt.items()} for (s, h) in self.count.keys()}
             else:
-                return v_opt
-        else:
-            raise ValueError
+                ret = v_opt
+            return ret
 
-    def get_bonus(self, u, new_u):
-        ret = self.gamma * self.phi[new_u] - self.phi[u]
+        else:
+            raise NotImplementedError
+
+    def get_bonus(self, u, new_u, sh=None, new_sh=None):
+        if self.scaling == 's_dependent':
+            ret = self.gamma * self.phi[new_sh][new_u] - self.phi[sh][u]
+        else:
+            ret = self.gamma * self.phi[new_u] - self.phi[u]
         return ret
 
-    def step(self):
+    def step(self, counts=None):
         self.k += 1
+        if counts is not None:
+            for h, d in counts.items():
+                for s, n in d.items():
+                    self.count[(s, h)] = np.sum(n)
         if self.scaling == 'log':
             self.phi = {k: v / np.log(self.k) for k, v in self.phi0.items()}
         elif self.scaling == 'sqrt':
             self.phi = {k: v / np.sqrt(self.k) for k, v in self.phi0.items()}
-        if self.scaling in ['log', 'sqrt']:
-            self.min, self.max = self.resized_phi(self.env, self.phi, self.gamma)
+        elif self.scaling == 's_dependent':
+            self.phi = {(s, h): {u: v / np.sqrt(n + 1) for u, v in self.phi0[(s, h)].items()}
+                        for (s, h), n in self.count.items()}
+        if self.resize and self.scaling in ['sqrt', 'log']:
+            self.min, self.max = self.resized_phi(self.env, self.phi, self.gamma, self.scaling)
 
     @staticmethod
-    def resized_phi(env, phi, gamma_):
-        min_, max_ = 1e9, -1e9
-        for s_index, s in enumerate(env.states):
-            env.s = s
-            for u in env.rm.states:
-                env.rm.u = u
-                for a in env.actions[s_index]:
-                    r, new_s = env.step(a, perform_action=False)
-                    _, new_u = env.rm.step(s, new_s, perform_transition=False)
-                    new_r = r + gamma_ * phi[new_u] - phi[u]
-                    if new_r < min_:
-                        min_ = new_r
-                    if new_r > max_:
-                        max_ = new_r
-        return min_, max_
+    def resized_phi(env, phi, gamma_, scaling):
+        if scaling == "s_dependent":
+            return None, None
+        else:
+            min_, max_ = 1e9, -1e9
+            for s_index, s in enumerate(env.states):
+                env.s = s
+                for u in env.rm.states:
+                    env.rm.u = u
+                    for a in env.actions[s_index]:
+                        r, new_s = env.step(a, perform_action=False)
+                        _, new_u = env.rm.step(s, new_s, perform_transition=False)
+                        new_r = r + gamma_ * phi[new_u] - phi[u]
+                        if new_r < min_:
+                            min_ = new_r
+                        if new_r > max_:
+                            max_ = new_r
+            return min_, max_
 

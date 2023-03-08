@@ -19,6 +19,7 @@ parser.add_argument('--max_t', type=int, help="Time horizon", default=100000)
 parser.add_argument('--n_runs', type=int, help="Number of runs to average on", default=10)
 parser.add_argument('--title', type=str, help="Plot title", default="Regret")
 parser.add_argument('--resized_rs_bonus', nargs="*", default=None)
+parser.add_argument('--colors', nargs="*", default=None)
 args = parser.parse_args()
 
 
@@ -76,7 +77,7 @@ def _get_regret_finite_h(v_star, pis, initial_points, env_copy: BaseEnvironment,
 
 def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fig.svg", episode_length=None,
                 title=None, opt_gain=None, dp=None, regret_per_episode=True, has_rm_=False, _reward_shaping=None,
-                resized_rs_=False):
+                resized_rs_=False, color_=None):
     regrets = []
     env_copy = deepcopy(env_)
     if has_rm_:
@@ -118,7 +119,11 @@ def plot_regret(t, env_: BaseEnvironment, s0, n_runs=10, algo="oql", save_to="fi
             algo = f"Reward shaping {_reward_shaping.scaling}"
             if resized_rs_:
                 algo += " (resized bonus)"
-        plt.plot(times, regrets.mean(axis=0), label=algo)
+        if color is not None:
+            plt.plot(times, regrets.mean(axis=0), label=algo, color=color_,
+                     linestyle="dashed" if "-rm-" in algo else "solid")
+        else:
+            plt.plot(times, regrets.mean(axis=0), label=algo)
         if title is not None:
             plt.title(title)
         plt.xscale(x_scale)
@@ -247,7 +252,7 @@ def get_rs_args(arg, nb):
         for a in arg:
             if a == 'None':
                 ret.append(None)
-            elif a in ['log', 'sqrt']:
+            elif a in ['log', 'sqrt', 's_dependent']:
                 ret.append(a)
             else:
                 try:
@@ -283,8 +288,9 @@ if __name__ == '__main__':
     plot_title = args.title
     reward_shaping = get_rs_args(args.reward_shaping, len(algo_names))
     resized_rs_bonus = get_resized_rs_bonus_args(args.resized_rs_bonus, len(algo_names))
+    colors = [None] * len(algo_names) if args.colors is None else args.colors
 
-    for algo, env_name, rs, resized_rs in zip(algo_names, env_names, reward_shaping, resized_rs_bonus):
+    for algo, env_name, rs, resized_rs, color in zip(algo_names, env_names, reward_shaping, resized_rs_bonus, colors):
         print(f"Algorithm: {algo}, environment: {env_name}")
         has_rm_ = has_rm(algo, env_name)
         env = get_env(env_name, n, cross_product_=((env_name == "gridworld" or env_name.startswith("patrol"))
@@ -294,11 +300,12 @@ if __name__ == '__main__':
             assert isinstance(env.rm, RiverSwimPatrol) or isinstance(env.rm, LargePatrol) or isinstance(env.rm, GridWorldRM)
             assert env_name.startswith("patrol") or env_name == "gridworld"
             gamma_ = 1 - 1 / h
+            s, u = env.n_states, env.rm.n_states
             if env_name.startswith("patrol"):
-                v_opt = get_v_opt_patrol(gamma_, n_cycles=1 if env_name == "patrol" else int(int(env_name[6:]) / 2))
+                v_opt = get_v_opt_patrol(gamma_**(s/u), n_cycles=1 if env_name == "patrol" else int(int(env_name[6:]) / 2))
             else:
-                v_opt = get_v_opt_gridworld(gamma_, n, n)
-            rs = RewardShaping(env.rm, v_opt=v_opt, scaling=rs, gamma_=gamma_, env=env)
+                v_opt = get_v_opt_gridworld(gamma_**(s/u), n, n)
+            rs = RewardShaping(env.rm, v_opt=v_opt, scaling=rs, gamma_=gamma_, env=env, h=h, resize=resized_rs)
 
         if has_rm_:
             dp = ValueDynamicProgramming(env=get_cross_product(env, env.rm), h=h+1)
@@ -325,7 +332,8 @@ if __name__ == '__main__':
                     regret_per_episode=True,
                     has_rm_=has_rm_,
                     _reward_shaping=rs,
-                    resized_rs_=resized_rs)
+                    resized_rs_=resized_rs,
+                    color_=color)
     for i in [1, 2]:
         plt.figure(i)
         plt.legend()

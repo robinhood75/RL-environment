@@ -376,7 +376,12 @@ class UCBQLRM(UCBQL):
                     r, new_u_ = self.rm.step(s, new_s, perform_transition=False)
                     next_v = self.V[new_u_][h + 1][new_s] if h < self.max_steps - 1 else 0
                     if self.reward_shaping is not None:
-                        rs_bonus = self.reward_shaping.get_bonus(u_, new_u_)
+                        if self.reward_shaping.scaling == "s_dependent":
+                            rs_bonus = self.reward_shaping.get_bonus(u_, new_u_,
+                                                                     sh=(s, h),
+                                                                     new_sh=(new_s, (h+1) % self.max_steps))
+                        else:
+                            rs_bonus = self.reward_shaping.get_bonus(u_, new_u_)
                         r += rs_bonus
                         if self.resized_rs_reward:
                             r = (r - self.reward_shaping.min) / (self.reward_shaping.max - self.reward_shaping.min)
@@ -388,7 +393,7 @@ class UCBQLRM(UCBQL):
                 self.rm.u = new_u
 
             if self.reward_shaping is not None:
-                self.reward_shaping.step()
+                self.reward_shaping.step(counts=self.n)
             pis.append(copy([{(s_, u_): np.argmax(self.Q[u_][h][s_]) for s_ in self.env.states for u_ in self.rm.states}
                              for h in range(self.max_steps)]))
         return initial_points, pis
